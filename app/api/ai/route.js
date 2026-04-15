@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const MAX_IMG_B64_LEN = 800_000; // ~600KB decoded
 const MAX_IMAGES = 4;

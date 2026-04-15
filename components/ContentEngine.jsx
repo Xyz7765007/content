@@ -58,17 +58,27 @@ async function callAISearch(prompt) {
   } catch (e) { return "Error: " + e.message; }
 }
 
-async function genImage(prompt) {
+async function genImage(prompt, googleKey) {
+  if (!googleKey) return { error: "Enter your Google API key to generate creatives." };
   try {
-    const res = await fetch("/api/generate-image", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
-    });
-    const text = await res.text();
-    try { return JSON.parse(text); } catch {
-      return { error: "Server returned invalid response for image generation." };
-    }
+    // Direct browser call to Google - no Vercel timeout limit
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${googleKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+        }),
+      }
+    );
+    const d = await res.json();
+    if (d.error) return { error: d.error.message || "Google API error" };
+    const parts = d.candidates?.[0]?.content?.parts || [];
+    const im = parts.find((p) => p.inlineData);
+    if (im) return { image: `data:${im.inlineData.mimeType};base64,${im.inlineData.data}` };
+    return { error: "No image generated. Try refining the prompt." };
   } catch (e) { return { error: e.message }; }
 }
 
@@ -616,10 +626,11 @@ function Redo({ label, value, onUpdate, data, platform, children }) {
   );
 }
 
-function ContentBlock({ content, platform, newsItem, data }) {
+function ContentBlock({ content, platform, newsItem, data, setData }) {
   const [cur, setCur] = useState(content);
   const [gi, setGi] = useState(false);
   const [img, setImg] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
   const [showR, setShowR] = useState(false);
   const [ri, setRi] = useState("");
   const [rd, setRd] = useState(false);
@@ -627,9 +638,18 @@ function ContentBlock({ content, platform, newsItem, data }) {
   const isI = platform === "instagram";
   const has = Object.keys(sec).length > 0;
   const upSec = (k, v) => setCur((p) => p.replace(new RegExp(`(===${k}===\\s*)[\\s\\S]*?(?=(?:===\\w)|$)`), `$1\n${v}\n\n`));
-  const genC = async () => { setGi(true); setImg(await genImage(sec.IMAGE_PROMPT || `Creative: ${newsItem.headline}. Brand: ${data.brandName}. Editorial.`)); setGi(false); };
+
+  const genC = async () => {
+    setGi(true); setElapsed(0); setImg(null);
+    const timer = setInterval(() => setElapsed((e) => e + 1), 1000);
+    const result = await genImage(sec.IMAGE_PROMPT || `Creative: ${newsItem.headline}. Brand: ${data.brandName}. Editorial.`, data.googleKey);
+    clearInterval(timer);
+    setImg(result); setGi(false);
+  };
+
   const redoAll = async () => { setRd(true); setCur(await callAI(`Redo ${platform}:\n${cur}\nFeedback: "${ri}"\nBrand: ${data.brandName}\nSame format. No hyphens.`, true)); setRd(false); setShowR(false); setRi(""); };
   const pf = PLATFORMS.find((p) => p.id === platform);
+  const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
     <Cd style={{ marginBottom: 12 }}>
@@ -644,10 +664,31 @@ function ContentBlock({ content, platform, newsItem, data }) {
           {sec.CREATIVE_DETAILS != null && <Redo label="Creative Instructions" value={sec.CREATIVE_DETAILS} onUpdate={(v) => upSec("CREATIVE_DETAILS", v)} data={data} platform="Instagram" />}
           {sec.IMAGE_PROMPT != null && (
             <Redo label="Image Generation Prompt" value={sec.IMAGE_PROMPT} onUpdate={(v) => upSec("IMAGE_PROMPT", v)} data={data} platform="Instagram">
-              <div style={{ marginTop: 10 }}>
-                <Btn v="ghost" onClick={genC} disabled={gi} style={{ padding: "8px 16px", fontSize: 13 }}>{gi ? "Generating..." : "🎨 Generate Creative (Nano Banana Pro)"}</Btn>
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #1e1e1e" }}>
+                {!data.googleKey ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ color: "#888", fontSize: 12 }}>Enter your Google API key to generate creatives (runs in your browser, no timeout limit)</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <In value={data.googleKey || ""} onChange={(v) => setData((d) => ({ ...d, googleKey: v }))} placeholder="Google AI API key (aistudio.google.com/apikey)" type="password" style={{ flex: 1, padding: "8px 12px", fontSize: 12 }} />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <Btn v="ghost" onClick={genC} disabled={gi} style={{ padding: "8px 16px", fontSize: 13 }}>
+                      {gi ? `Generating... ${fmtTime(elapsed)}` : "🎨 Generate Creative (Nano Banana Pro)"}
+                    </Btn>
+                    {gi && (
+                      <div style={{ marginTop: 8, color: "#888", fontSize: 12 }}>
+                        This takes 3 to 5 minutes. Runs directly in your browser, no timeout.
+                        <div style={{ width: "100%", height: 3, background: "#1a1a1a", borderRadius: 2, marginTop: 6, overflow: "hidden" }}>
+                          <div style={{ width: `${Math.min((elapsed / 300) * 100, 95)}%`, height: "100%", background: S.accent, transition: "width 1s linear" }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              {img && <div style={{ marginTop: 10 }}>{img.error ? <div style={{ color: "#ff6666", fontSize: 13, padding: 8 }}>{img.error}</div> : <img src={img.image} alt="" style={{ width: "100%", borderRadius: 8 }} />}</div>}
+              {img && <div style={{ marginTop: 10 }}>{img.error ? <div style={{ background: "#1a0000", border: "1px solid #330000", borderRadius: 8, padding: 10, color: "#ff6666", fontSize: 13 }}>{img.error}</div> : <img src={img.image} alt="" style={{ width: "100%", borderRadius: 8 }} />}</div>}
             </Redo>
           )}
         </div>
@@ -672,7 +713,7 @@ function ContentBlock({ content, platform, newsItem, data }) {
 
 // =================== STEP: RESULTS ===================
 
-function StepResults({ data }) {
+function StepResults({ data, setData }) {
   const [aid, setAid] = useState(null);
   const sn = (data.fetchedNews || []).filter((n) => n.selected);
   const ct = data.generatedContent || {};
@@ -694,7 +735,7 @@ function StepResults({ data }) {
             <div style={{ color: S.accent, fontSize: 14, fontWeight: 600 }}>{sn.find((n) => n.id === aid)?.headline}</div>
           </div>
           {(data.selectedPlatforms || []).map((pid) => {
-            const c = ct[aid]?.[pid]; return c ? <ContentBlock key={pid} content={c} platform={pid} newsItem={sn.find((n) => n.id === aid)} data={data} /> : null;
+            const c = ct[aid]?.[pid]; return c ? <ContentBlock key={pid} content={c} platform={pid} newsItem={sn.find((n) => n.id === aid)} data={data} setData={setData} /> : null;
           })}
         </div>
       )}
@@ -714,7 +755,13 @@ export default function ContentEngine() {
     selectedSignals: [], signalPrompts: {}, fetchedNews: [], selectedPlatforms: [],
     emailPersonalisation: "", emailCsvData: null, emailFieldMap: {},
     generatedContent: {}, atRid: null,
+    googleKey: typeof window !== "undefined" ? localStorage.getItem("ce_google_key") || "" : "",
   });
+
+  // Persist Google key to localStorage
+  useEffect(() => {
+    if (data.googleKey) localStorage.setItem("ce_google_key", data.googleKey);
+  }, [data.googleKey]);
 
   const ok = () => {
     switch (step) {
@@ -734,7 +781,7 @@ export default function ContentEngine() {
     <StepSelect data={data} setData={setData} />,
     <StepPlatforms data={data} setData={setData} />,
     <StepGen data={data} setData={setData} setStep={setStep} />,
-    <StepResults data={data} />,
+    <StepResults data={data} setData={setData} />,
   ];
 
   return (
