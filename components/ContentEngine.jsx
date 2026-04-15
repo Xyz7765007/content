@@ -31,7 +31,11 @@ async function callAI(prompt, useOpus = false, images = []) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, useOpus, images: images?.filter(Boolean) || [] }),
     });
-    const d = await res.json();
+    const text = await res.text();
+    let d;
+    try { d = JSON.parse(text); } catch {
+      return "Error: Server returned invalid response. Check Vercel logs.";
+    }
     if (d.error) return "Error: " + d.error;
     return d.text || "No response.";
   } catch (e) { return "Error: " + e.message; }
@@ -44,7 +48,11 @@ async function callAISearch(prompt) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
-    const d = await res.json();
+    const text = await res.text();
+    let d;
+    try { d = JSON.parse(text); } catch {
+      return "Error: Server returned invalid response. Check Vercel logs.";
+    }
     if (d.error) return "Error: " + d.error;
     return d.text || "No results.";
   } catch (e) { return "Error: " + e.message; }
@@ -57,7 +65,10 @@ async function genImage(prompt) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
-    return await res.json();
+    const text = await res.text();
+    try { return JSON.parse(text); } catch {
+      return { error: "Server returned invalid response for image generation." };
+    }
   } catch (e) { return { error: e.message }; }
 }
 
@@ -233,7 +244,16 @@ function StepBrand({ data, setData }) {
   const [refining, setRefining] = useState(false);
   const [tab, setTab] = useState("brand");
   const [atSt, setAtSt] = useState("");
+  const [atOk, setAtOk] = useState(null); // null=unknown, true=connected, false=not configured
   const [brands, setBrands] = useState([]);
+
+  // Check Airtable on mount
+  useEffect(() => {
+    atAction("test").then(r => {
+      if (r.error) { setAtOk(false); setAtSt(r.error); }
+      else { setAtOk(true); setAtSt("Connected"); setTimeout(() => setAtSt(""), 2000); }
+    });
+  }, []);
 
   const loadAt = async () => {
     setAtSt("Loading..."); const r = await atAction("load");
@@ -260,18 +280,31 @@ function StepBrand({ data, setData }) {
       <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Brand Setup</h2>
       <p style={{ color: S.muted, fontSize: 14, marginBottom: 18 }}>Tell us about the brand.</p>
 
-      <Cd style={{ marginBottom: 18, padding: 14, background: "#0d0d0d", borderColor: "#1a2a00" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Btn v="ghost" onClick={loadAt} style={{ padding: "5px 12px", fontSize: 12 }}>📥 Load from Airtable</Btn>
-            <Btn v="ghost" onClick={saveAt} style={{ padding: "5px 12px", fontSize: 12 }}>💾 Save to Airtable</Btn>
+      <Cd style={{ marginBottom: 18, padding: 14, background: "#0d0d0d", borderColor: atOk === false ? "#331a00" : "#1a2a00" }}>
+        {atOk === false ? (
+          <div>
+            <div style={{ color: "#ffaa00", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>⚠️ Airtable not configured</div>
+            <div style={{ color: "#888", fontSize: 12, lineHeight: 1.6 }}>
+              Add these env vars in Vercel (Settings → Environment Variables) then redeploy:<br/>
+              <code style={{ color: S.accent }}>AIRTABLE_PAT</code> = your personal access token (airtable.com/create/tokens, needs scopes: data.records:read, data.records:write, schema.bases:read, schema.bases:write)<br/>
+              <code style={{ color: S.accent }}>AIRTABLE_BASE_ID</code> = <code style={{ color: S.accent }}>appmMqJEF1DzkZxvC</code> (your base)
+            </div>
           </div>
-          {atSt && <span style={{ color: S.accent, fontSize: 12 }}>{atSt}</span>}
-        </div>
-        {brands.length > 0 && (
-          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            {brands.map((b) => <Tg key={b.rid} onClick={() => apply(b)}>{b.brandName || "Unnamed"}</Tg>)}
-          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn v="ghost" onClick={loadAt} style={{ padding: "5px 12px", fontSize: 12 }}>📥 Load from Airtable</Btn>
+                <Btn v="ghost" onClick={saveAt} style={{ padding: "5px 12px", fontSize: 12 }}>💾 Save to Airtable</Btn>
+              </div>
+              {atSt && <span style={{ color: atSt.startsWith("Error") ? "#ff6666" : S.accent, fontSize: 12 }}>{atSt}</span>}
+            </div>
+            {brands.length > 0 && (
+              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {brands.map((b) => <Tg key={b.rid} onClick={() => apply(b)}>{b.brandName || "Unnamed"}</Tg>)}
+              </div>
+            )}
+          </>
         )}
       </Cd>
 
@@ -504,11 +537,23 @@ function StepGen({ data, setData, setStep }) {
         if (pid === "instagram") {
           const hasRI = (data.instaRefImages || []).some(Boolean);
           const hasCR = (data.refCreativeImages || []).some(Boolean);
-          const imgN = hasRI ? "\n\nCRITICAL: I attached reference Instagram post images. Study their visual style, layout, typography, composition carefully. Match this style." : "";
-          const crN = hasCR ? "\n\nCRITICAL: I attached reference creatives. These OVERRIDE default direction. Match color palette, typography, layout, visual language precisely." : "";
-          const p = `World class Instagram strategist.${imgN}${crN}\n\n${bc}\nPERSONALITY: ${per}${refT}\n\n${nc}\n\nCREATIVE DIR: ${hasCR ? "See attached refs." : data.creativeDirection || DEFAULT_CD}\n\nCreate:\n1. CAPTION: Engaging, on brand, hashtags\n2. CREATIVE_DETAILS: EXTREMELY detailed designer brief (layout, typography, colors hex, composition, overlays, hierarchy, dimensions, textures, mood). Zero interpretation.\n3. IMAGE_PROMPT: Detailed Nano Banana Pro prompt (every element, colors, text, composition, style, 1080x1080). Perfect.\n\n===CAPTION===\n[caption]\n===CREATIVE_DETAILS===\n[brief]\n===IMAGE_PROMPT===\n[prompt]\n\nNo hyphens. Human.`;
+          const imgN = hasRI ? "\nCRITICAL: I attached reference Instagram post images. Study their visual style, layout, typography, composition carefully. Match this style." : "";
+          const crN = hasCR ? "\nCRITICAL: I attached reference creatives. These OVERRIDE default direction. Match color palette, typography, layout, visual language precisely." : "";
           const imgs = [...(data.instaRefImages || []), ...(data.refCreativeImages || [])].filter(Boolean);
-          all[n.id][pid] = await callAI(p, true, imgs); continue;
+          const base = `${bc}\nPERSONALITY: ${per}${refT}\n\nNEWS SIGNAL:\n${nc}\n\nCREATIVE DIR: ${hasCR ? "See attached refs." : data.creativeDirection || DEFAULT_CD}`;
+
+          // 3 separate calls to stay within Vercel 60s timeout
+          setPr({ c, t, l: `Instagram Caption: ${n.headline.substring(0, 25)}...` });
+          const cap = await callAI(`Instagram caption writer.${imgN}${crN}\n\n${base}\n\nWrite a compelling Instagram caption tying this news signal to the brand. Engaging, conversational, on brand. Line breaks for readability. Relevant hashtags at end. Return ONLY the caption text, nothing else. No hyphens or dashes.`, true, imgs);
+
+          setPr({ c, t, l: `Instagram Creative Brief: ${n.headline.substring(0, 25)}...` });
+          const creative = await callAI(`Instagram creative director.${imgN}${crN}\n\n${base}\n\nWrite an EXTREMELY detailed creative brief that a graphic designer follows BLINDLY. Include:\n- Exact layout structure (grid, single image, carousel with slide count)\n- Typography choices (font style, weight, size hierarchy, exact placement)\n- Color palette (exact hex codes aligned with brand)\n- Image composition (what photos/elements, where placed, how cropped)\n- Text overlay content and exact placement coordinates\n- Visual hierarchy and focal points\n- Aspect ratio and dimensions (1080x1080 for feed)\n- Graphic elements, borders, textures, overlays\n- Overall mood and aesthetic reference\nZERO creative interpretation needed. Return ONLY the brief. No hyphens or dashes.`, true, imgs);
+
+          setPr({ c, t, l: `Instagram Image Prompt: ${n.headline.substring(0, 25)}...` });
+          const imgPrompt = await callAI(`AI image prompt engineer.${crN}\n\n${base}\n\nCaption: ${cap.substring(0, 200)}\nCreative Brief Summary: ${creative.substring(0, 300)}\n\nWrite an extremely detailed prompt for Nano Banana Pro (Google AI image generator) to create this Instagram creative. Include:\n- Exact visual description of every element in the image\n- Specific color values and palette\n- Typography: exact text to render, font style, size, placement\n- Composition and spatial layout\n- Style reference (editorial, collage, minimal, etc)\n- Lighting, shadows, mood, atmosphere\n- Aspect ratio 1080x1080\n- Any textures, overlays, borders, graphic elements\nEvery single detail must be specified. Return ONLY the prompt. No hyphens or dashes.`, true, imgs);
+
+          all[n.id][pid] = `===CAPTION===\n${cap}\n\n===CREATIVE_DETAILS===\n${creative}\n\n===IMAGE_PROMPT===\n${imgPrompt}`;
+          continue;
         }
         if (pid === "linkedin") { all[n.id][pid] = await callAI(`LinkedIn strategist.\n${bc}\nPERSONALITY: ${per}${refT}\n${nc}\nHook, insight, value, CTA. Brand voice.\n===POST===\n[post]\nNo hyphens. <1300 chars.`, true); continue; }
         if (pid === "twitter") { all[n.id][pid] = await callAI(`Twitter strategist.\n${bc}\nPERSONALITY: ${per}${refT}\n${nc}\nPunchy, bold. Optional thread max 3.\n===TWEET===\n[tweet]\n===THREAD===\n[optional]\nNo hyphens. 280 max.`, true); continue; }

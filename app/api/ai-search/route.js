@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(req) {
   try {
-    const { prompt } = await req.json();
+    let body;
+    try { body = await req.json(); } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const { prompt } = body;
     if (!prompt) return NextResponse.json({ error: "No prompt" }, { status: 400 });
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -25,21 +30,22 @@ export async function POST(req) {
       }),
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: err.error?.message || `API error ${res.status}` },
-        { status: res.status }
-      );
+    const raw = await res.text();
+    let data;
+    try { data = JSON.parse(raw); } catch {
+      return NextResponse.json({ error: `Non-JSON from Anthropic (${res.status}): ${raw.substring(0, 150)}` }, { status: 502 });
     }
 
-    const data = await res.json();
+    if (!res.ok) {
+      return NextResponse.json({ error: data.error?.message || `API error ${res.status}` }, { status: res.status });
+    }
+
     let text = "";
     for (const block of data.content || []) {
       if (block.type === "text") text += block.text;
     }
 
-    return NextResponse.json({ text });
+    return NextResponse.json({ text: text || "No results found." });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
