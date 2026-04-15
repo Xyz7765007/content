@@ -447,24 +447,144 @@ function StepSignals({ data, setData }) {
 // (These follow the same pattern - using API wrappers instead of direct calls)
 
 function StepFetch({ data, setData, setStep }) {
-  const [f, setF] = useState(false);
-  const go = async () => {
-    setF(true);
-    const sigs = (data.selectedSignals || []).map((id) => { const s = SIGNAL_TYPES.find((t) => t.id === id); return `${s.label}: ${data.signalPrompts?.[id] || s.desc}`; });
-    const tgt = data.targetMode === "accounts" ? `Brands: ${data.accountList}` : `Niche: ${data.niche}${data.subNiches ? ", " + data.subNiches : ""}`;
-    const r = await callAISearch(`Find news LAST 7 DAYS ONLY (today ${new Date().toISOString().split("T")[0]}). ${data.brandName}, ${tgt}. ${sigs.length ? "Signals:\n" + sigs.join("\n") : "Any notable news."} Per item: HEADLINE, BRAND, SUMMARY, SIGNIFICANCE, DATE. Separate ---. 5 to 10. No hyphens.`);
-    const items = [];
-    for (const bl of r.split("---").filter((b) => b.trim())) {
-      const ex = (k) => { const m = bl.match(new RegExp(`${k}:\\s*(.+?)(?=\\n[A-Z]+:|$)`, "s")); return m ? m[1].trim() : ""; };
-      const h = ex("HEADLINE"); if (h) items.push({ id: Math.random().toString(36).substr(2, 9), headline: h, brand: ex("BRAND"), summary: ex("SUMMARY"), significance: ex("SIGNIFICANCE"), date: ex("DATE"), selected: false });
+  const [fetching, setFetching] = useState(false);
+  const [status, setStatus] = useState("");
+
+  const fetchNews = async () => {
+    setFetching(true);
+    setStatus("Building search queries...");
+
+    const signals = (data.selectedSignals || []).map((id) => {
+      const s = SIGNAL_TYPES.find((t) => t.id === id);
+      return `${s.label}: ${data.signalPrompts?.[id] || s.desc}`;
+    });
+
+    const targetInfo = data.targetMode === "accounts"
+      ? `Specific brands to track:\n${data.accountList}`
+      : `Niche: ${data.niche}${data.subNiches ? "\nSub niches: " + data.subNiches : ""}`;
+
+    const signalInfo = signals.length > 0
+      ? `Signal types to look for:\n${signals.join("\n")}`
+      : "Look for any notable news, launches, campaigns, or moves in this space.";
+
+    setStatus("Searching the web for signals...");
+
+    const searchPrompt = `You are a news research agent. Find the most relevant and recent news from the LAST 7 DAYS ONLY (today is ${new Date().toISOString().split("T")[0]}).
+
+CONTEXT:
+Brand being served: ${data.brandName || "Not specified"}
+Industry: ${data.niche || "Not specified"}
+${targetInfo}
+
+${signalInfo}
+
+INSTRUCTIONS:
+1. Search for the most recent and relevant news based on the signals and targets above
+2. Only include news from the last 7 days
+3. For each piece of news, provide the info in the EXACT format shown below
+4. Find between 5 and 10 pieces of relevant news
+5. Each news item MUST be separated by exactly three dashes on their own line: ---
+
+YOU MUST FORMAT EACH NEWS ITEM EXACTLY LIKE THIS (this is critical for parsing):
+
+HEADLINE: [clear specific headline of the news]
+BRAND: [the brand or company involved]
+SUMMARY: [2 to 3 sentence summary of what happened]
+SIGNIFICANCE: [why this matters for content creation]
+DATE: [the date, e.g. April 12, 2026]
+---
+
+IMPORTANT RULES:
+- Each item MUST have all 5 fields: HEADLINE, BRAND, SUMMARY, SIGNIFICANCE, DATE
+- Each item MUST end with --- on its own line
+- Do NOT use any other format, headers, or markdown
+- Do NOT write an introduction or conclusion
+- Start directly with the first HEADLINE:
+- Do NOT use hyphens or dashes inside the content (only --- as separator between items)`;
+
+    const result = await callAISearch(searchPrompt);
+
+    setStatus("Parsing results...");
+    const newsItems = [];
+    const blocks = result.split("---").filter((b) => b.trim());
+
+    for (const block of blocks) {
+      const extract = (key) => {
+        const patterns = [
+          new RegExp(`${key}:\\s*(.+?)(?=\\n(?:HEADLINE|BRAND|SUMMARY|SIGNIFICANCE|DATE):|$)`, "s"),
+          new RegExp(`${key}:\\s*(.+?)(?=\\n[A-Z]+:|$)`, "s"),
+          new RegExp(`\\*\\*${key}:?\\*\\*\\s*(.+?)(?=\\n|$)`, "s"),
+        ];
+        for (const p of patterns) {
+          const m = block.match(p);
+          if (m) return m[1].trim().replace(/^\*\*|\*\*$/g, "");
+        }
+        return "";
+      };
+
+      const headline = extract("HEADLINE");
+      if (headline && headline.length > 5) {
+        newsItems.push({
+          id: Math.random().toString(36).substr(2, 9),
+          headline,
+          brand: extract("BRAND"),
+          summary: extract("SUMMARY"),
+          significance: extract("SIGNIFICANCE"),
+          date: extract("DATE"),
+          selected: false,
+        });
+      }
     }
-    if (!items.length) items.push({ id: "f", headline: "Search done", brand: "Review", summary: r.substring(0, 400), significance: "See results", date: "Recent", selected: false });
-    setData((d) => ({ ...d, fetchedNews: items })); setF(false); setStep(4);
+
+    if (newsItems.length === 0) {
+      // Fallback: try to salvage any structure from the response
+      newsItems.push({
+        id: "fallback",
+        headline: "News search completed",
+        brand: data.niche || "General",
+        summary: result.substring(0, 500),
+        significance: "The AI returned results in an unexpected format. Review the text above.",
+        date: "Recent",
+        selected: false,
+      });
+    }
+
+    setData((d) => ({ ...d, fetchedNews: newsItems }));
+    setFetching(false);
+    setStatus("");
+    setStep(4);
   };
+
   return (
-    <div><h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Fetch News</h2>
-      <Cd>{f ? <div style={{ textAlign: "center", padding: "36px 0" }}><div style={{ width: 36, height: 36, border: "3px solid #222", borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} /><div style={{ color: S.accent, fontSize: 15, fontWeight: 600 }}>Searching...</div></div>
-        : <Btn onClick={go} style={{ width: "100%" }}>🔍 Fetch Signals</Btn>}</Cd></div>
+    <div>
+      <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Fetch News</h2>
+      <p style={{ color: S.muted, fontSize: 14, marginBottom: 22 }}>AI will search the web for signals from the last 7 days.</p>
+      <Cd>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 12 }}>
+            <div style={{ color: S.muted, fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Target</div>
+            <div style={{ color: "#fff", fontSize: 14 }}>
+              {data.targetMode === "accounts"
+                ? `${(data.accountList || "").split("\n").filter((l) => l.trim()).length} accounts`
+                : data.niche || "N/A"}
+            </div>
+          </div>
+          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 12 }}>
+            <div style={{ color: S.muted, fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Signals</div>
+            <div style={{ color: "#fff", fontSize: 14 }}>{(data.selectedSignals || []).length || "All"} types</div>
+          </div>
+        </div>
+        {fetching ? (
+          <div style={{ textAlign: "center", padding: "36px 0" }}>
+            <div style={{ width: 36, height: 36, border: "3px solid #222", borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
+            <div style={{ color: S.accent, fontSize: 15, fontWeight: 600 }}>{status}</div>
+            <div style={{ color: S.muted, fontSize: 13, marginTop: 4 }}>This may take 30 to 60 seconds...</div>
+          </div>
+        ) : (
+          <Btn onClick={fetchNews} style={{ width: "100%" }}>🔍 Fetch News Signals</Btn>
+        )}
+      </Cd>
+    </div>
   );
 }
 
