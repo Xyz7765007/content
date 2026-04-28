@@ -446,9 +446,56 @@ function StepSignals({ data, setData }) {
 // =================== STEP: FETCH / SELECT / PLATFORMS / GENERATE ===================
 // (These follow the same pattern - using API wrappers instead of direct calls)
 
+const RESEARCH_PLATFORMS = [
+  { id: "google", label: "Google News", icon: "🔍" },
+  { id: "twitter", label: "Twitter / X", icon: "𝕏" },
+  { id: "instagram", label: "Instagram", icon: "📸" },
+  { id: "reddit", label: "Reddit", icon: "🤖" },
+  { id: "linkedin", label: "LinkedIn", icon: "💼" },
+  { id: "youtube", label: "YouTube", icon: "📺" },
+  { id: "tiktok", label: "TikTok", icon: "🎵" },
+];
+
+const COUNTRIES = [
+  { id: "global", label: "Global (All)" },
+  { id: "IN", label: "India" },
+  { id: "US", label: "United States" },
+  { id: "UK", label: "United Kingdom" },
+  { id: "AE", label: "UAE / Gulf" },
+  { id: "AU", label: "Australia" },
+  { id: "SG", label: "Singapore" },
+  { id: "CA", label: "Canada" },
+  { id: "EU", label: "Europe" },
+];
+
 function StepFetch({ data, setData, setStep }) {
   const [fetching, setFetching] = useState(false);
   const [status, setStatus] = useState("");
+  const [researchPlatforms, setResearchPlatforms] = useState(data.researchPlatforms || ["google"]);
+  const [resultRange, setResultRange] = useState(data.resultRange || [10, 20]);
+  const [locations, setLocations] = useState(data.researchLocations || ["global"]);
+
+  const togPlatform = (id) => {
+    const updated = researchPlatforms.includes(id)
+      ? researchPlatforms.filter((p) => p !== id)
+      : [...researchPlatforms, id];
+    if (updated.length === 0) return; // at least one
+    setResearchPlatforms(updated);
+    setData((d) => ({ ...d, researchPlatforms: updated }));
+  };
+
+  const togLocation = (id) => {
+    let updated;
+    if (id === "global") {
+      updated = ["global"];
+    } else {
+      updated = locations.filter((l) => l !== "global");
+      updated = updated.includes(id) ? updated.filter((l) => l !== id) : [...updated, id];
+      if (updated.length === 0) updated = ["global"];
+    }
+    setLocations(updated);
+    setData((d) => ({ ...d, researchLocations: updated }));
+  };
 
   const fetchNews = async () => {
     setFetching(true);
@@ -467,9 +514,16 @@ function StepFetch({ data, setData, setStep }) {
       ? `Signal types to look for:\n${signals.join("\n")}`
       : "Look for any notable news, launches, campaigns, or moves in this space.";
 
-    setStatus("Searching the web for signals...");
+    const platformNames = researchPlatforms.map((id) => RESEARCH_PLATFORMS.find((p) => p.id === id)?.label).join(", ");
+    const locationNames = locations.includes("global")
+      ? "Global (all regions)"
+      : locations.map((id) => COUNTRIES.find((c) => c.id === id)?.label).join(", ");
+    const minResults = resultRange[0];
+    const maxResults = resultRange[1];
 
-    const searchPrompt = `You are a news research agent. Find the most relevant and recent news from the LAST 7 DAYS ONLY (today is ${new Date().toISOString().split("T")[0]}).
+    setStatus(`Searching ${platformNames}...`);
+
+    const searchPrompt = `You are an expert news and social media research agent. Find the most relevant and recent signals from the LAST 7 DAYS ONLY (today is ${new Date().toISOString().split("T")[0]}).
 
 CONTEXT:
 Brand being served: ${data.brandName || "Not specified"}
@@ -478,29 +532,52 @@ ${targetInfo}
 
 ${signalInfo}
 
+RESEARCH PLATFORMS TO SEARCH:
+${researchPlatforms.map((id) => {
+  const p = RESEARCH_PLATFORMS.find((rp) => rp.id === id);
+  const instructions = {
+    google: "Search Google News for press coverage, articles, and announcements",
+    twitter: "Search Twitter/X for viral tweets, brand announcements, trending discussions, and notable threads from brand accounts and industry voices",
+    instagram: "Search Instagram for new campaign launches, viral posts, influencer collaborations, notable brand posts, and visual campaign rollouts",
+    reddit: "Search Reddit for brand discussions, product reviews, industry threads, viral posts in relevant subreddits",
+    linkedin: "Search LinkedIn for corporate announcements, leadership posts, company updates, and professional industry discussions",
+    youtube: "Search YouTube for new brand campaigns, product launch videos, viral brand content",
+    tiktok: "Search TikTok for viral brand moments, trending sounds/challenges involving brands, influencer content",
+  };
+  return `${p?.label}: ${instructions[id] || "Search for relevant content"}`;
+}).join("\n")}
+
+GEOGRAPHIC FOCUS: ${locationNames}
+${!locations.includes("global") ? `IMPORTANT: Prioritize news and signals from these specific regions. Include the country/region context in each result. For India, search for Indian brands, Indian market news. For US, search US market, etc.` : ""}
+
+RESULT COUNT: Find between ${minResults} and ${maxResults} pieces of relevant news/signals. More is better.
+
 INSTRUCTIONS:
-1. Search for the most recent and relevant news based on the signals and targets above
-2. Only include news from the last 7 days
-3. For each piece of news, provide the info in the EXACT format shown below
-4. Find between 5 and 10 pieces of relevant news
+1. Search across ALL the platforms listed above
+2. Only include content from the last 7 days
+3. For each piece, include which platform/source it came from
+4. For each item, provide the info in the EXACT format shown below
 5. Each news item MUST be separated by exactly three dashes on their own line: ---
 
-YOU MUST FORMAT EACH NEWS ITEM EXACTLY LIKE THIS (this is critical for parsing):
+YOU MUST FORMAT EACH NEWS ITEM EXACTLY LIKE THIS:
 
-HEADLINE: [clear specific headline of the news]
+HEADLINE: [clear specific headline of the news or signal]
 BRAND: [the brand or company involved]
-SUMMARY: [2 to 3 sentence summary of what happened]
+SOURCE: [which platform this came from, e.g. Twitter, Google News, Reddit, Instagram]
+SUMMARY: [2 to 3 sentence summary of what happened or what was posted]
 SIGNIFICANCE: [why this matters for content creation]
 DATE: [the date, e.g. April 12, 2026]
 ---
 
 IMPORTANT RULES:
-- Each item MUST have all 5 fields: HEADLINE, BRAND, SUMMARY, SIGNIFICANCE, DATE
+- Each item MUST have all 6 fields: HEADLINE, BRAND, SOURCE, SUMMARY, SIGNIFICANCE, DATE
 - Each item MUST end with --- on its own line
 - Do NOT use any other format, headers, or markdown
 - Do NOT write an introduction or conclusion
 - Start directly with the first HEADLINE:
-- Do NOT use hyphens or dashes inside the content (only --- as separator between items)`;
+- Do NOT use hyphens or dashes inside the content (only --- as separator)
+- Aim for at least ${minResults} results, up to ${maxResults}
+- Include results from MULTIPLE platforms listed above, not just one`;
 
     const result = await callAISearch(searchPrompt);
 
@@ -511,7 +588,7 @@ IMPORTANT RULES:
     for (const block of blocks) {
       const extract = (key) => {
         const patterns = [
-          new RegExp(`${key}:\\s*(.+?)(?=\\n(?:HEADLINE|BRAND|SUMMARY|SIGNIFICANCE|DATE):|$)`, "s"),
+          new RegExp(`${key}:\\s*(.+?)(?=\\n(?:HEADLINE|BRAND|SOURCE|SUMMARY|SIGNIFICANCE|DATE):|$)`, "s"),
           new RegExp(`${key}:\\s*(.+?)(?=\\n[A-Z]+:|$)`, "s"),
           new RegExp(`\\*\\*${key}:?\\*\\*\\s*(.+?)(?=\\n|$)`, "s"),
         ];
@@ -528,6 +605,7 @@ IMPORTANT RULES:
           id: Math.random().toString(36).substr(2, 9),
           headline,
           brand: extract("BRAND"),
+          source: extract("SOURCE"),
           summary: extract("SUMMARY"),
           significance: extract("SIGNIFICANCE"),
           date: extract("DATE"),
@@ -537,13 +615,13 @@ IMPORTANT RULES:
     }
 
     if (newsItems.length === 0) {
-      // Fallback: try to salvage any structure from the response
       newsItems.push({
         id: "fallback",
         headline: "News search completed",
         brand: data.niche || "General",
+        source: "Web",
         summary: result.substring(0, 500),
-        significance: "The AI returned results in an unexpected format. Review the text above.",
+        significance: "AI returned results in unexpected format. Review text above.",
         date: "Recent",
         selected: false,
       });
@@ -558,30 +636,83 @@ IMPORTANT RULES:
   return (
     <div>
       <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Fetch News</h2>
-      <p style={{ color: S.muted, fontSize: 14, marginBottom: 22 }}>AI will search the web for signals from the last 7 days.</p>
+      <p style={{ color: S.muted, fontSize: 14, marginBottom: 18 }}>Configure search, then fetch signals.</p>
+
+      {/* Research Platforms */}
+      <Cd style={{ marginBottom: 12, padding: 16 }}>
+        <Lb>Research Platforms *</Lb>
+        <p style={{ color: S.muted, fontSize: 12, marginBottom: 10 }}>Select where to search for signals. More platforms = more coverage.</p>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {RESEARCH_PLATFORMS.map((p) => (
+            <Tg key={p.id} selected={researchPlatforms.includes(p.id)} onClick={() => togPlatform(p.id)}>
+              {p.icon} {p.label}
+            </Tg>
+          ))}
+        </div>
+      </Cd>
+
+      {/* Location Filter */}
+      <Cd style={{ marginBottom: 12, padding: 16 }}>
+        <Lb>Location / Region</Lb>
+        <p style={{ color: S.muted, fontSize: 12, marginBottom: 10 }}>Filter signals by geography. Select Global for everything.</p>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {COUNTRIES.map((c) => (
+            <Tg key={c.id} selected={locations.includes(c.id)} onClick={() => togLocation(c.id)}>
+              {c.label}
+            </Tg>
+          ))}
+        </div>
+      </Cd>
+
+      {/* Result Count */}
+      <Cd style={{ marginBottom: 12, padding: 16 }}>
+        <Lb>Result Range</Lb>
+        <p style={{ color: S.muted, fontSize: 12, marginBottom: 10 }}>How many signals to fetch. More results take longer.</p>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ color: "#888", fontSize: 13 }}>Min</span>
+            <In value={resultRange[0]} onChange={(v) => { const n = parseInt(v) || 5; setResultRange([n, Math.max(n, resultRange[1])]); setData((d) => ({ ...d, resultRange: [n, Math.max(n, resultRange[1])] })); }}
+              type="number" style={{ width: 70, padding: "8px 10px", fontSize: 13, textAlign: "center" }} />
+          </div>
+          <span style={{ color: "#555" }}>to</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ color: "#888", fontSize: 13 }}>Max</span>
+            <In value={resultRange[1]} onChange={(v) => { const n = parseInt(v) || 10; setResultRange([Math.min(resultRange[0], n), n]); setData((d) => ({ ...d, resultRange: [Math.min(resultRange[0], n), n] })); }}
+              type="number" style={{ width: 70, padding: "8px 10px", fontSize: 13, textAlign: "center" }} />
+          </div>
+        </div>
+      </Cd>
+
+      {/* Summary + Fetch Button */}
       <Cd>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 12 }}>
-            <div style={{ color: S.muted, fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Target</div>
-            <div style={{ color: "#fff", fontSize: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 10 }}>
+            <div style={{ color: S.muted, fontSize: 10, textTransform: "uppercase", marginBottom: 3 }}>Target</div>
+            <div style={{ color: "#fff", fontSize: 13 }}>
               {data.targetMode === "accounts"
                 ? `${(data.accountList || "").split("\n").filter((l) => l.trim()).length} accounts`
                 : data.niche || "N/A"}
             </div>
           </div>
-          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 12 }}>
-            <div style={{ color: S.muted, fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Signals</div>
-            <div style={{ color: "#fff", fontSize: 14 }}>{(data.selectedSignals || []).length || "All"} types</div>
+          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 10 }}>
+            <div style={{ color: S.muted, fontSize: 10, textTransform: "uppercase", marginBottom: 3 }}>Platforms</div>
+            <div style={{ color: "#fff", fontSize: 13 }}>{researchPlatforms.length} selected</div>
+          </div>
+          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 10 }}>
+            <div style={{ color: S.muted, fontSize: 10, textTransform: "uppercase", marginBottom: 3 }}>Location</div>
+            <div style={{ color: "#fff", fontSize: 13 }}>{locations.includes("global") ? "Global" : locations.length + " regions"}</div>
           </div>
         </div>
         {fetching ? (
           <div style={{ textAlign: "center", padding: "36px 0" }}>
             <div style={{ width: 36, height: 36, border: "3px solid #222", borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
             <div style={{ color: S.accent, fontSize: 15, fontWeight: 600 }}>{status}</div>
-            <div style={{ color: S.muted, fontSize: 13, marginTop: 4 }}>This may take 30 to 60 seconds...</div>
+            <div style={{ color: S.muted, fontSize: 13, marginTop: 4 }}>This may take 30 to 90 seconds depending on platforms...</div>
           </div>
         ) : (
-          <Btn onClick={fetchNews} style={{ width: "100%" }}>🔍 Fetch News Signals</Btn>
+          <Btn onClick={fetchNews} style={{ width: "100%" }}>
+            🔍 Fetch {resultRange[0]} to {resultRange[1]} Signals from {researchPlatforms.length} Platform{researchPlatforms.length > 1 ? "s" : ""}
+          </Btn>
         )}
       </Cd>
     </div>
@@ -589,23 +720,63 @@ IMPORTANT RULES:
 }
 
 function StepSelect({ data, setData }) {
-  const news = data.fetchedNews || []; const ct = news.filter((n) => n.selected).length;
+  const news = data.fetchedNews || [];
+  const ct = news.filter((n) => n.selected).length;
+  const [page, setPage] = useState(0);
+  const perPage = 8;
+  const totalPages = Math.max(1, Math.ceil(news.length / perPage));
+  const paged = news.slice(page * perPage, (page + 1) * perPage);
+
   return (
-    <div><h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Select News</h2>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-        <span style={{ color: S.muted, fontSize: 14 }}>{news.length} found</span>
+    <div>
+      <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Select News</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <span style={{ color: S.muted, fontSize: 14 }}>{news.length} found · {ct} selected</span>
         <Btn v="ghost" onClick={() => setData((d) => ({ ...d, fetchedNews: d.fetchedNews.map((n) => ({ ...n, selected: true })) }))} style={{ padding: "5px 10px", fontSize: 12 }}>Select All</Btn>
       </div>
-      {ct > 0 && <div style={{ background: "#0f1a00", border: "1px solid #2a3d00", borderRadius: 8, padding: "8px 14px", marginBottom: 12, color: S.accent, fontWeight: 600, fontSize: 14 }}>{ct} selected</div>}
+
+      {ct > 0 && (
+        <div style={{ background: "#0f1a00", border: "1px solid #2a3d00", borderRadius: 8, padding: "8px 14px", marginBottom: 12, color: S.accent, fontWeight: 600, fontSize: 14 }}>
+          {ct} signal{ct > 1 ? "s" : ""} selected
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {news.map((n) => (
-          <Cd key={n.id} style={{ borderColor: n.selected ? S.accent : S.border, cursor: "pointer" }} onClick={() => setData((d) => ({ ...d, fetchedNews: d.fetchedNews.map((x) => x.id === n.id ? { ...x, selected: !x.selected } : x) }))}>
-            <div style={{ color: "#fff", fontWeight: 600, fontSize: 14, marginBottom: 3 }}>{n.headline}</div>
-            <div style={{ color: S.accent, fontSize: 11, marginBottom: 4 }}>{n.brand} · {n.date}</div>
+        {paged.map((n) => (
+          <Cd key={n.id} style={{ borderColor: n.selected ? S.accent : S.border, cursor: "pointer" }}
+            onClick={() => setData((d) => ({ ...d, fetchedNews: d.fetchedNews.map((x) => x.id === n.id ? { ...x, selected: !x.selected } : x) }))}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ color: "#fff", fontWeight: 600, fontSize: 14, marginBottom: 3, flex: 1 }}>{n.headline}</div>
+              <div style={{
+                width: 20, height: 20, borderRadius: 5, border: `2px solid ${n.selected ? S.accent : "#444"}`,
+                background: n.selected ? S.accent : "transparent", display: "flex", alignItems: "center",
+                justifyContent: "center", flexShrink: 0, marginLeft: 10
+              }}>
+                {n.selected && <span style={{ color: "#000", fontSize: 12, fontWeight: 700 }}>✓</span>}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+              <span style={{ background: "#1a1a1a", color: S.accent, padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{n.brand}</span>
+              {n.source && <span style={{ background: "#1a1a1a", color: "#888", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>{n.source}</span>}
+              <span style={{ color: "#555", fontSize: 12 }}>{n.date}</span>
+            </div>
             <div style={{ color: "#999", fontSize: 13 }}>{n.summary}</div>
           </Cd>
         ))}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 16 }}>
+          <Btn v="secondary" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
+            style={{ padding: "6px 14px", fontSize: 12 }}>← Prev</Btn>
+          <span style={{ color: S.muted, fontSize: 13 }}>
+            Page {page + 1} of {totalPages}
+          </span>
+          <Btn v="secondary" onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+            style={{ padding: "6px 14px", fontSize: 12 }}>Next →</Btn>
+        </div>
+      )}
     </div>
   );
 }
