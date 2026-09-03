@@ -1,0 +1,195 @@
+/* =====================================================================
+   Content Engine design tokens
+   Light is the default. Dark is opt-in via <html data-theme="dark">
+   (toggle in the Profile drawer). Every colour used by the app comes
+   from here; the component's palette object points at these variables.
+   ===================================================================== */
+:root {
+  color-scheme: light;
+
+  /* grounds */
+  --ground: #FCF5EF;
+  --surface: #FFFDFB;
+  --sunken: #F6EDE5;
+  --wash-hover: #F6EDE5;
+  --wash-selected: #FFF0F4;
+  --scrim: rgba(20, 20, 20, .45);
+
+  /* warm-neutral ink ramp (measured against the cream ground) */
+  --ink: #141414;        /* 17.06:1 */
+  --ink-2: #57504A;      /*  7.33:1  secondary text */
+  --ink-3: #6E655D;      /*  5.28:1  meta, labels */
+  --ink-4: #756C64;      /*  4.76:1  placeholders */
+  --ink-dis: #8C837A;    /*  3.45:1  disabled only */
+  --ink-inv: #FCF5EF;
+
+  /* borders */
+  --hair: #EFE6DC;
+  --border: #E2D7CB;
+  --border-field: #8C837A;   /* 3.45:1, WCAG 1.4.11 for input boundaries */
+  --border-strong: #141414;
+
+  /* the one accent: rose, derived from the brand pink */
+  --accent: #96234A;         /* 7.38:1 on cream */
+  --accent-hover: #7E1C3D;
+  --accent-fill: #FFC2D1;    /* the brand pink: fills and washes only, never text */
+  --accent-soft: #FFE4EC;
+  --pink: #FFC2D1;
+
+  /* the system's read: azure, derived from the brand blue */
+  --link: #14556F;           /* 7.60:1 on cream */
+  --azure-soft: #E2EFF6;
+  --blue: #D3E5EF;           /* the brand blue: fills only */
+
+  /* semantic state, separate from the accent */
+  --positive: #1F6034; --positive-fill: #E1EFE4;
+  --warning: #7A5205;  --warning-fill: #FAEFD6;
+  --danger: #9C2B14;   --danger-fill: #FBE5DC;
+
+  /* signal-type taxonomy: fill / ink pairs, all >= 5.6:1. Pink is reserved
+     for "saved", so product_launch sits on coral. */
+  --t-product_launch-f: #FCE4D4; --t-product_launch-i: #8A3D0F;
+  --t-market_move-f: #E2EFF6;    --t-market_move-i: #14556F;
+  --t-repositioning-f: #EBE6F7;  --t-repositioning-i: #4B3A86;
+  --t-expansion-f: #E1EFE4;      --t-expansion-i: #1F6034;
+  --t-campaign-f: #FAF0C8;       --t-campaign-i: #6B5300;
+  --t-controversy-f: #FBE0DC;    --t-controversy-i: #9C2B14;
+  --t-collab-f: #DCEEEE;         --t-collab-i: #0F5D5B;
+  --t-custom-f: #F0E9E2;         --t-custom-i: #4F4842;
+  --t-other-f: #F0E9E2;          --t-other-i: #4F4842;
+
+  /* elevation: warm-tinted and diffuse, never pure black on cream */
+  --e1: 0 1px 2px rgba(74, 52, 34, .05);
+  --e2: 0 2px 8px rgba(74, 52, 34, .06), 0 1px 2px rgba(74, 52, 34, .04);
+  --e3: 0 12px 28px -10px rgba(74, 52, 34, .14), 0 2px 6px rgba(74, 52, 34, .05);
+  --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+
+  /* shape */
+  --r-chip: 999px; --r-ctl: 8px; --r-card: 14px; --r-overlay: 20px;
+
+  /* motion */
+  --d-instant: 90ms; --d-quick: 160ms; --d-std: 240ms; --d-exp: 420ms;
+  --ease-enter: cubic-bezier(0, 0, .2, 1);
+  --ease-exit: cubic-bezier(.4, 0, 1, 1);
+  --ease-std: cubic-bezier(.4, 0, .2, 1);
+  --ease-emph: cubic-bezier(.2, 0, 0, 1);
+
+  /* type: set by next/font in layout.js; these are the fallbacks */
+  --f-text: var(--font-dm-sans, 'DM Sans'), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-mono: var(--font-dm-mono, 'DM Mono'), ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --f-display: var(--font-playfair, 'Playfair Display'), ui-serif, Georgia, 'Times New Roman', serif;
+
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .35 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #121110; --surface: #1A1817; --sunken: #151312;
+  --wash-hover: #232120; --wash-selected: #2A1D22; --scrim: rgba(0, 0, 0, .62);
+  --ink: #F7F3EF; --ink-2: #BCB4AC; --ink-3: #948C84; --ink-4: #8A8179; --ink-dis: #6F6660; --ink-inv: #121110;
+  --hair: #262322; --border: #332F2D; --border-field: #6F6660; --border-strong: #F7F3EF;
+  --accent: #F7A8BE; --accent-hover: #FFC2D1; --accent-fill: #3B1F29; --accent-soft: #2A1D22; --pink: #F7A8BE;
+  --link: #8ECAE6; --azure-soft: #16303C; --blue: #8ECAE6;
+  --positive: #7FC98F; --positive-fill: #193024; --warning: #E8B45C; --warning-fill: #332811; --danger: #F09080; --danger-fill: #3A2116;
+  --t-product_launch-f: #3A2416; --t-product_launch-i: #F0A878;
+  --t-market_move-f: #16303C;    --t-market_move-i: #93C9E3;
+  --t-repositioning-f: #2A2340;  --t-repositioning-i: #B9A7EC;
+  --t-expansion-f: #193024;      --t-expansion-i: #8CC79C;
+  --t-campaign-f: #332811;       --t-campaign-i: #E3BA6A;
+  --t-controversy-f: #3A2116;    --t-controversy-i: #EDA184;
+  --t-collab-f: #12302F;         --t-collab-i: #79C6C2;
+  --t-custom-f: #282320;         --t-custom-i: #C4BAB1;
+  --t-other-f: #282320;          --t-other-i: #C4BAB1;
+  --e1: 0 1px 2px rgba(0, 0, 0, .5);
+  --e2: 0 2px 8px rgba(0, 0, 0, .55);
+  --e3: 0 12px 28px -10px rgba(0, 0, 0, .65);
+}
+
+/* ---------- things inline styles cannot express ---------- */
+.ce-btn { transition: background var(--d-quick) var(--ease-std), border-color var(--d-quick), transform var(--d-instant), opacity var(--d-quick); }
+.ce-btn:not(:disabled):active { transform: scale(.98); }
+.ce-btn-primary:not(:disabled):hover { background: var(--accent) !important; }
+.ce-btn-secondary:not(:disabled):hover { background: var(--wash-hover) !important; border-color: var(--border-field) !important; }
+.ce-btn-ghost:not(:disabled):hover { background: var(--accent-soft) !important; }
+.ce-btn:focus-visible, .ce-focus:focus-visible, .ce-tag:focus-visible, .ce-card-btn:focus-visible { outline: none; box-shadow: var(--focus); }
+
+.ce-card { transition: border-color var(--d-quick) var(--ease-std), box-shadow var(--d-quick), transform var(--d-quick); }
+.ce-card-hover:hover { border-color: var(--border-field) !important; box-shadow: var(--e2); }
+.ce-card-select:hover { border-color: var(--border-field) !important; }
+.ce-tag { transition: background var(--d-quick), color var(--d-quick), border-color var(--d-quick); user-select: none; }
+.ce-tag:hover { border-color: var(--border-field) !important; }
+
+.ce-input:focus, .ce-textarea:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+.ce-input::placeholder, .ce-textarea::placeholder { color: var(--ink-4); }
+
+/* saved-state edge on a signal card */
+.ce-saved { position: relative; }
+.ce-saved::before { content: ""; position: absolute; left: -1px; top: 14px; bottom: 14px; width: 3px; border-radius: 3px; background: var(--pink); }
+
+/* bookmark: the only overshoot in the product */
+.ce-bm-heart svg path { fill: transparent; stroke: currentColor; stroke-width: 1.6; transition: fill 140ms var(--ease-std); }
+.ce-bm-heart.is-saved svg path { fill: currentColor; }
+.ce-bm-heart.pop { animation: ce-pop 200ms cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes ce-pop { 0% { transform: scale(.88); } 100% { transform: scale(1); } }
+
+/* popover / drawer / toast entrances */
+@keyframes ce-popin { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes ce-slide { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ce-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ce-up { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.ce-popin { animation: ce-popin var(--d-quick) var(--ease-enter); }
+.ce-slide { animation: ce-slide var(--d-std) var(--ease-enter) both; }
+.ce-fade { animation: ce-fade var(--d-quick) both; }
+.ce-up { animation: ce-up var(--d-std) var(--ease-enter) both; }
+
+/* opening page (shell register): gradient + grain, expressive; never inside the app */
+.ce-shell { position: relative; min-height: 100dvh; overflow: hidden; background: var(--ground); }
+.ce-shell::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 15% 10%, rgba(255, 194, 209, .55), transparent 60%),
+    radial-gradient(50% 45% at 85% 20%, rgba(211, 229, 239, .7), transparent 60%),
+    radial-gradient(60% 50% at 50% 100%, rgba(203, 232, 190, .45), transparent 60%);
+}
+.ce-shell::after { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: var(--grain); opacity: .28; mix-blend-mode: multiply; }
+:root[data-theme="dark"] .ce-shell::after { mix-blend-mode: screen; opacity: .12; }
+.ce-shell > * { position: relative; z-index: 1; }
+.ce-rise { animation: ce-rise var(--d-exp) var(--ease-emph) both; }
+.ce-rise.d1 { animation-delay: 60ms; } .ce-rise.d2 { animation-delay: 120ms; } .ce-rise.d3 { animation-delay: 180ms; }
+@keyframes ce-rise { from { opacity: .4; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ce-pill { transition: background var(--d-quick) var(--ease-std), transform var(--d-quick); }
+.ce-pill:hover { background: var(--accent) !important; color: var(--ink-inv) !important; }
+.ce-pill.ghost:hover { background: var(--wash-hover) !important; color: var(--ink) !important; }
+.ce-pill:active { transform: scale(.97); }
+.ce-flipwrap { perspective: 1400px; height: 100%; }
+.ce-flip { position: relative; height: 100%; transform-style: preserve-3d; transition: transform 600ms var(--ease-emph); }
+.ce-flip.on { transform: rotateY(180deg); }
+.ce-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.ce-face.back { transform: rotateY(180deg); }
+.ce-stack .ce-sc { position: absolute; inset: 0; transition: transform var(--d-exp) var(--ease-emph), opacity var(--d-exp) var(--ease-std); }
+.ce-stack .ce-sc:nth-child(1) { z-index: 3; }
+.ce-stack .ce-sc:nth-child(2) { z-index: 2; transform: translate(12px, 12px) scale(.985); opacity: .85; }
+.ce-stack .ce-sc:nth-child(3) { z-index: 1; transform: translate(24px, 24px) scale(.97); opacity: .7; }
+
+/* progress hairline for long waits (the only looping animation in the app) */
+@keyframes ce-slidebar { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.ce-bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 30%; background: var(--accent); animation: ce-slidebar 1.6s var(--ease-std) infinite; }
+
+/* long lists: skip layout and paint off-screen */
+.ce-cv { content-visibility: auto; contain-intrinsic-size: auto 220px; }
+
+@media (max-width: 720px) {
+  .ce-hero { grid-template-columns: 1fr !important; }
+  .ce-how { grid-template-columns: 1fr 1fr !important; }
+  .ce-two { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 480px) {
+  .ce-how { grid-template-columns: 1fr !important; }
+  .ce-hide-sm { display: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+  .ce-flip { transition: none; }
+  .ce-bar { animation: none; width: 100%; opacity: .5; }
+}

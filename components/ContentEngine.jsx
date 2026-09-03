@@ -1,5 +1,11 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { TypeBadge, Mark, PLATFORM_MARK, Wordmark, CheckIcon } from "./icons";
+import { loadSaved, persistSaved, signalKey, domainOf } from "../lib/saved";
+import { BookmarkButton, FolderPop, Toast } from "./saved-ui";
+import Opening from "./Opening";
+import SavedDrawer from "./SavedDrawer";
+import { DEMO_BRAND, DEMO_NEWS } from "../lib/demo";
 
 // =================== CONSTANTS ===================
 
@@ -15,10 +21,10 @@ const SIGNAL_TYPES = [
   { id: "custom", label: "Custom Signal", desc: "Define your own signal type" }
 ];
 const PLATFORMS = [
-  { id: "instagram", label: "Instagram", icon: "📸", desc: "Caption + Creative Brief + AI Creative" },
-  { id: "linkedin", label: "LinkedIn", icon: "💼", desc: "Thought leadership post" },
-  { id: "twitter", label: "Twitter / X", icon: "𝕏", desc: "Short form tweets" },
-  { id: "email", label: "Email Newsletter", icon: "📧", desc: "Newsletter with personalisation" }
+  { id: "instagram", label: "Instagram", icon: "ig", desc: "Caption + Creative Brief + AI Creative" },
+  { id: "linkedin", label: "LinkedIn", icon: "in", desc: "Thought leadership post" },
+  { id: "twitter", label: "Twitter / X", icon: "x", desc: "Short form tweets" },
+  { id: "email", label: "Email Newsletter", icon: "em", desc: "Newsletter with personalisation" }
 ];
 const DEFAULT_CD = `Editorial, magazine style. Bold typography mixing serif display with clean sans serif body. Collage aesthetic: real photography + graphic elements. Brand aligned color palettes. High contrast text/imagery. Product shots, lifestyle photography, graphic overlays. Legible, artistic text on images. Vogue meets brand strategy. Rounded corner image grids. Strong visual hierarchy. Smart, culturally aware, visually striking, shareable.`;
 
@@ -93,6 +99,20 @@ async function atAction(action, data = null, recordId = null) {
   } catch (e) { return { error: e.message }; }
 }
 
+// Checks the source links the search returned. Non-blocking: cards render at
+// once and the verified / not verified label fills in when this resolves.
+async function verifyLinks(items, setData) {
+  const urls = items.map((n) => n.url).filter(Boolean);
+  if (!urls.length) return;
+  try {
+    const res = await fetch("/api/verify-links", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls }) });
+    const d = await res.json();
+    const map = {};
+    (d.results || []).forEach((r) => { map[r.url] = r; });
+    setData((prev) => ({ ...prev, fetchedNews: (prev.fetchedNews || []).map((n) => (n.url && map[n.url] ? { ...n, verified: map[n.url].ok, finalUrl: map[n.url].finalUrl || n.url } : n)) }));
+  } catch {}
+}
+
 // =================== UTILS ===================
 
 function parseSections(t) {
@@ -160,13 +180,20 @@ function resizeImg(dataUrl, max = 800) {
 
 // =================== UI ATOMS ===================
 
-const S = { bg: "#0a0a0a", card: "#111", border: "#1e1e1e", accent: "#c8ff00", text: "#eee", muted: "#666", input: "#111" };
+// Every value points at a token in app/tokens.css, so the whole app re-skins from one file.
+const S = {
+  bg: "var(--ground)", card: "var(--surface)", sunken: "var(--sunken)", input: "var(--surface)",
+  border: "var(--border)", borderField: "var(--border-field)", hair: "var(--hair)",
+  accent: "var(--accent)", accentSoft: "var(--accent-soft)", accentFill: "var(--accent-fill)",
+  text: "var(--ink)", text2: "var(--ink-2)", muted: "var(--ink-3)", inv: "var(--ink-inv)", link: "var(--link)",
+  warning: "var(--warning)", warningFill: "var(--warning-fill)", danger: "var(--danger)", dangerFill: "var(--danger-fill)",
+};
 
 function Spinner({ label }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0" }}>
-      <div style={{ width: 18, height: 18, border: "2px solid #333", borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <span style={{ color: "#888", fontSize: 13 }}>{label || "Thinking..."}</span>
+      <div style={{ width: 18, height: 18, border: `2px solid ${S.hair}`, borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <span style={{ color: S.text2, fontSize: 13 }}>{label || "Thinking..."}</span>
     </div>
   );
 }
@@ -174,41 +201,41 @@ function Spinner({ label }) {
 function TA({ value, onChange, placeholder, rows = 4, style = {} }) {
   return (
     <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={rows}
-      style={{ width: "100%", background: S.input, border: "1px solid #2a2a2a", borderRadius: 8, color: S.text, padding: "12px 14px", fontSize: 14, fontFamily: "'DM Sans',sans-serif", resize: "vertical", outline: "none", lineHeight: 1.6, boxSizing: "border-box", ...style }} />
+      className="ce-textarea" style={{ width: "100%", background: S.input, border: `1px solid ${S.borderField}`, borderRadius: 8, color: S.text, padding: "12px 14px", fontSize: 14, fontFamily: "var(--f-text)", resize: "vertical", outline: "none", lineHeight: 1.6, boxSizing: "border-box", ...style }} />
   );
 }
 
 function In({ value, onChange, placeholder, type = "text", style = {} }) {
   return (
     <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-      style={{ width: "100%", background: S.input, border: "1px solid #2a2a2a", borderRadius: 8, color: S.text, padding: "12px 14px", fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box", ...style }} />
+      className="ce-input" style={{ width: "100%", background: S.input, border: `1px solid ${S.borderField}`, borderRadius: 8, color: S.text, padding: "12px 14px", fontSize: 14, fontFamily: "var(--f-text)", outline: "none", boxSizing: "border-box", ...style }} />
   );
 }
 
 function Btn({ children, onClick, v = "primary", disabled = false, style = {} }) {
-  const b = { padding: "12px 24px", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "'DM Sans',sans-serif", border: "none", transition: "all 0.2s ease", opacity: disabled ? 0.5 : 1, ...style };
+  const b = { padding: "11px 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "var(--f-text)", border: "1px solid transparent", opacity: disabled ? 0.5 : 1, ...style };
   const vs = {
-    primary: { ...b, background: S.accent, color: "#000" },
-    secondary: { ...b, background: "#1a1a1a", color: S.text, border: "1px solid #333" },
+    primary: { ...b, background: "var(--ink)", color: S.inv },
+    secondary: { ...b, background: S.card, color: S.text, border: `1px solid ${S.border}` },
     ghost: { ...b, background: "transparent", color: S.accent, border: `1px solid ${S.accent}` },
   };
-  return <button onClick={onClick} disabled={disabled} style={vs[v]}>{children}</button>;
+  return <button type="button" className={`ce-btn ce-btn-${v}`} onClick={onClick} disabled={disabled} style={vs[v]}>{children}</button>;
 }
 
-function Cd({ children, style = {}, onClick }) {
-  return <div onClick={onClick} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 12, padding: 24, ...style }}>{children}</div>;
+function Cd({ children, style = {}, onClick, className = "" }) {
+  return <div onClick={onClick} className={`ce-card ${className}`} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: 20, ...style }}>{children}</div>;
 }
 
 function Lb({ children }) {
-  return <label style={{ color: "#999", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>{children}</label>;
+  return <label style={{ color: S.muted, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: ".1em", display: "block", marginBottom: 6 }}>{children}</label>;
 }
 
 function Tg({ children, selected, onClick }) {
   return (
-    <span onClick={onClick} style={{
-      display: "inline-block", padding: "6px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer",
-      background: selected ? S.accent : "#1a1a1a", color: selected ? "#000" : "#aaa",
-      border: `1px solid ${selected ? S.accent : "#333"}`, fontWeight: selected ? 600 : 400, transition: "all 0.2s",
+    <span role="button" tabIndex={0} className="ce-tag ce-focus" onClick={onClick} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick && onClick(e); } }} style={{
+      display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 13px", borderRadius: 999, fontSize: 13, cursor: "pointer",
+      background: selected ? "var(--ink)" : S.card, color: selected ? S.inv : S.text2,
+      border: `1px solid ${selected ? "var(--ink)" : S.border}`, fontWeight: selected ? 600 : 500,
     }}>{children}</span>
   );
 }
@@ -227,17 +254,17 @@ function ImgGrid({ images, setImages, count, label }) {
       {Array.from({ length: count }).map((_, i) => {
         const im = images[i];
         return (
-          <div key={i} style={{ position: "relative", background: "#0a0a0a", border: `1px dashed ${im ? S.accent : "#333"}`, borderRadius: 8, aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          <div key={i} style={{ position: "relative", background: S.sunken, border: `1px dashed ${im ? S.accent : S.borderField}`, borderRadius: 8, aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
             {im ? (
               <>
                 <img src={im} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 <button onClick={() => { const u = [...images]; u[i] = null; setImages(u); }}
-                  style={{ position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.8)", border: "none", color: "#ff4444", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                  type="button" aria-label="Remove image" style={{ position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: "50%", background: "var(--ink)", border: "none", color: "var(--ink-inv)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
               </>
             ) : (
               <label style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 4 }}>
-                <span style={{ fontSize: 22, color: "#444" }}>+</span>
-                <span style={{ fontSize: 10, color: "#555" }}>{label} {i + 1}</span>
+                <span style={{ fontSize: 22, color: S.muted }}>+</span>
+                <span style={{ fontSize: 10, color: S.muted, fontFamily: "var(--f-mono)" }}>{label} {i + 1}</span>
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && up(i, e.target.files[0])} />
               </label>
             )}
@@ -287,14 +314,14 @@ function StepBrand({ data, setData }) {
 
   return (
     <div>
-      <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Brand Setup</h2>
+      <h2 style={{ color: S.text, fontSize: 26, fontWeight: 600, letterSpacing: "-.015em", marginBottom: 4 }}>Brand Setup</h2>
       <p style={{ color: S.muted, fontSize: 14, marginBottom: 18 }}>Tell us about the brand.</p>
 
-      <Cd style={{ marginBottom: 18, padding: 14, background: "#0d0d0d", borderColor: atOk === false ? "#331a00" : "#1a2a00" }}>
+      <Cd style={{ marginBottom: 18, padding: 14, background: S.sunken, borderColor: atOk === false ? S.warning : S.border }}>
         {atOk === false ? (
           <div>
-            <div style={{ color: "#ffaa00", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>⚠️ Airtable not configured</div>
-            <div style={{ color: "#888", fontSize: 12, lineHeight: 1.6 }}>
+            <div style={{ color: S.warning, fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Airtable not configured</div>
+            <div style={{ color: S.text2, fontSize: 12, lineHeight: 1.6 }}>
               Add these env vars in Vercel (Settings → Environment Variables) then redeploy:<br/>
               <code style={{ color: S.accent }}>AIRTABLE_PAT</code> = your personal access token (airtable.com/create/tokens, needs scopes: data.records:read, data.records:write, schema.bases:read, schema.bases:write)<br/>
               <code style={{ color: S.accent }}>AIRTABLE_BASE_ID</code> = <code style={{ color: S.accent }}>appmMqJEF1DzkZxvC</code> (your base)
@@ -304,10 +331,10 @@ function StepBrand({ data, setData }) {
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ display: "flex", gap: 8 }}>
-                <Btn v="ghost" onClick={loadAt} style={{ padding: "5px 12px", fontSize: 12 }}>📥 Load from Airtable</Btn>
-                <Btn v="ghost" onClick={saveAt} style={{ padding: "5px 12px", fontSize: 12 }}>💾 Save to Airtable</Btn>
+                <Btn v="ghost" onClick={loadAt} style={{ padding: "5px 12px", fontSize: 12 }}>Load from Airtable</Btn>
+                <Btn v="ghost" onClick={saveAt} style={{ padding: "5px 12px", fontSize: 12 }}>Save to Airtable</Btn>
               </div>
-              {atSt && <span style={{ color: atSt.startsWith("Error") ? "#ff6666" : S.accent, fontSize: 12 }}>{atSt}</span>}
+              {atSt && <span style={{ color: atSt.startsWith("Error") ? S.danger : S.accent, fontSize: 12, fontFamily: "var(--f-mono)" }}>{atSt}</span>}
             </div>
             {brands.length > 0 && (
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
@@ -334,16 +361,16 @@ function StepBrand({ data, setData }) {
           <div><Lb>Target Audience *</Lb><TA value={data.targetAudience} onChange={(v) => setData((d) => ({ ...d, targetAudience: v }))} rows={2} placeholder="Demographics, psychographics..." /></div>
           <div><Lb>Brand Voice *</Lb><TA value={data.brandPersona} onChange={(v) => setData((d) => ({ ...d, brandPersona: v }))} rows={3} placeholder="Tone, style, examples..." /></div>
           <div><Lb>Values</Lb><In value={data.brandValues} onChange={(v) => setData((d) => ({ ...d, brandValues: v }))} placeholder="e.g. Sustainability, Innovation" /></div>
-          <Btn v="ghost" onClick={refine} disabled={refining}>{refining ? "Refining..." : "✨ Refine with AI"}</Btn>
+          <Btn v="ghost" onClick={refine} disabled={refining}>{refining ? "Refining..." : "Refine with AI"}</Btn>
           {refining && <Spinner />}
         </div>
       )}
 
       {tab === "personality" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <p style={{ color: "#888", fontSize: 13, margin: 0 }}>Mandatory. Define brand voice per platform.</p>
+          <p style={{ color: S.text2, fontSize: 13, margin: 0 }}>Mandatory. Define brand voice per platform.</p>
           {PLATFORMS.map((p) => (
-            <div key={p.id}><Lb>{p.icon} {p.label} *</Lb>
+            <div key={p.id}><Lb>{p.label} *</Lb>
               <TA value={data.platformPersonality?.[p.id] || ""} onChange={(v) => setData((d) => ({ ...d, platformPersonality: { ...d.platformPersonality, [p.id]: v } }))} rows={2} placeholder={`Tone for ${p.label}...`} /></div>
           ))}
         </div>
@@ -351,15 +378,15 @@ function StepBrand({ data, setData }) {
 
       {tab === "references" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <Cd style={{ background: "#0d0d0d" }}>
-            <Lb>📸 Instagram Reference Posts (images, up to 4)</Lb>
+          <Cd style={{ background: S.sunken }}>
+            <Lb>Instagram reference posts (images, up to 4)</Lb>
             <p style={{ color: S.muted, fontSize: 12, marginBottom: 8 }}>Upload post screenshots. AI sees these directly.</p>
             <ImgGrid images={data.instaRefImages || [null, null, null, null]} setImages={(v) => setData((d) => ({ ...d, instaRefImages: v }))} count={4} label="Ref" />
           </Cd>
 
           {PLATFORMS.filter((p) => p.id !== "instagram").map((p) => (
-            <Cd key={p.id} style={{ background: "#0d0d0d" }}>
-              <Lb>{p.icon} {p.label} Refs (text, optional)</Lb>
+            <Cd key={p.id} style={{ background: S.sunken }}>
+              <Lb>{p.label} refs (text, optional)</Lb>
               {[0, 1, 2, 3].map((i) => (
                 <TA key={i} value={data.referencePosts?.[p.id]?.[i] || ""} onChange={(v) => {
                   const rs = { ...(data.referencePosts || {}) }; if (!rs[p.id]) rs[p.id] = [];
@@ -371,7 +398,7 @@ function StepBrand({ data, setData }) {
 
           <div><Lb>Creative Direction</Lb><TA value={data.creativeDirection || DEFAULT_CD} onChange={(v) => setData((d) => ({ ...d, creativeDirection: v }))} rows={4} /></div>
 
-          <Cd style={{ background: "#0d0d0d" }}>
+          <Cd style={{ background: S.sunken }}>
             <Lb>Reference Creatives (images, overrides default direction)</Lb>
             <ImgGrid images={data.refCreativeImages || [null, null, null]} setImages={(v) => setData((d) => ({ ...d, refCreativeImages: v }))} count={3} label="Creative" />
           </Cd>
@@ -387,13 +414,14 @@ function StepTargets({ data, setData }) {
   const m = data.targetMode || "niche";
   return (
     <div>
-      <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Targets</h2>
+      <h2 style={{ color: S.text, fontSize: 26, fontWeight: 600, letterSpacing: "-.015em", marginBottom: 4 }}>Targets</h2>
       <p style={{ color: S.muted, fontSize: 14, marginBottom: 22 }}>Choose how to discover news.</p>
       <div style={{ display: "flex", gap: 12, marginBottom: 22 }}>
-        {[["niche", "🎯", "Specify Niche"], ["accounts", "📋", "Account List"]].map(([k, ic, t]) => (
-          <Cd key={k} style={{ flex: 1, cursor: "pointer", borderColor: m === k ? S.accent : S.border, background: m === k ? S.card : "#0a0a0a" }} onClick={() => setData((d) => ({ ...d, targetMode: k }))}>
-            <div style={{ fontSize: 24, marginBottom: 6 }}>{ic}</div>
-            <div style={{ color: "#fff", fontWeight: 600 }}>{t}</div>
+        {[["niche", "ni", "Specify Niche", "Describe the space you serve"], ["accounts", "ac", "Account List", "Track specific brands"]].map(([k, ic, t, sub]) => (
+          <Cd key={k} className="ce-card-select" style={{ flex: 1, cursor: "pointer", borderColor: m === k ? "var(--ink)" : S.border, background: m === k ? "var(--wash-selected)" : S.card }} onClick={() => setData((d) => ({ ...d, targetMode: k }))}>
+            <div style={{ marginBottom: 8 }}><Mark text={ic} size={28} tone={m === k ? "accent" : "neutral"} /></div>
+            <div style={{ color: S.text, fontWeight: 600 }}>{t}</div>
+            <div style={{ color: S.muted, fontSize: 12, marginTop: 2 }}>{sub}</div>
           </Cd>
         ))}
       </div>
@@ -417,20 +445,20 @@ function StepSignals({ data, setData }) {
   };
   return (
     <div>
-      <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Signals</h2>
+      <h2 style={{ color: S.text, fontSize: 26, fontWeight: 600, letterSpacing: "-.015em", marginBottom: 4 }}>Signals</h2>
       <p style={{ color: S.muted, fontSize: 14, marginBottom: 22 }}>Select signal types.</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {SIGNAL_TYPES.map((s) => {
           const sel = (data.selectedSignals || []).includes(s.id);
           return (
-            <Cd key={s.id} style={{ borderColor: sel ? S.accent : S.border, cursor: "pointer", background: sel ? "#0f0f0f" : "#0a0a0a" }}>
-              <div onClick={() => tog(s.id)} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${sel ? S.accent : "#444"}`, background: sel ? S.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{sel && <span style={{ color: "#000", fontSize: 12, fontWeight: 700 }}>✓</span>}</div>
-                <div><div style={{ color: "#fff", fontWeight: 600, fontSize: 14 }}>{s.label}</div><div style={{ color: S.muted, fontSize: 12 }}>{s.desc}</div></div>
+            <Cd key={s.id} className="ce-card-select" style={{ borderColor: sel ? "var(--ink)" : S.border, cursor: "pointer", background: sel ? "var(--wash-selected)" : S.card, padding: "16px 18px" }}>
+              <div onClick={() => tog(s.id)} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 5, border: `1.5px solid ${sel ? "var(--ink)" : S.borderField}`, background: sel ? "var(--ink)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel && <CheckIcon color="var(--ink-inv)" />}</div>
+                <div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><span style={{ color: S.text, fontWeight: 600, fontSize: 14 }}>{s.label}</span><TypeBadge type={s.id} /></div><div style={{ color: S.muted, fontSize: 12.5, marginTop: 2 }}>{s.desc}</div></div>
               </div>
               {sel && (
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #1e1e1e" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}><Lb>Prompt</Lb><Btn v="ghost" onClick={() => ag(s.id)} disabled={gen[s.id]} style={{ padding: "3px 10px", fontSize: 11 }}>{gen[s.id] ? "..." : "⚡ Auto"}</Btn></div>
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${S.hair}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}><Lb>Prompt</Lb><Btn v="ghost" onClick={() => ag(s.id)} disabled={gen[s.id]} style={{ padding: "3px 10px", fontSize: 11 }}>{gen[s.id] ? "..." : "Auto"}</Btn></div>
                   <TA value={data.signalPrompts?.[s.id] || ""} onChange={(v) => setData((d) => ({ ...d, signalPrompts: { ...(d.signalPrompts || {}), [s.id]: v } }))} rows={3} />
                   {gen[s.id] && <Spinner />}
                 </div>
@@ -447,13 +475,13 @@ function StepSignals({ data, setData }) {
 // (These follow the same pattern - using API wrappers instead of direct calls)
 
 const RESEARCH_PLATFORMS = [
-  { id: "google", label: "Google News", icon: "🔍" },
-  { id: "twitter", label: "Twitter / X", icon: "𝕏" },
-  { id: "instagram", label: "Instagram", icon: "📸" },
-  { id: "reddit", label: "Reddit", icon: "🤖" },
-  { id: "linkedin", label: "LinkedIn", icon: "💼" },
-  { id: "youtube", label: "YouTube", icon: "📺" },
-  { id: "tiktok", label: "TikTok", icon: "🎵" },
+  { id: "google", label: "Google News", icon: "g" },
+  { id: "twitter", label: "Twitter / X", icon: "x" },
+  { id: "instagram", label: "Instagram", icon: "ig" },
+  { id: "reddit", label: "Reddit", icon: "r" },
+  { id: "linkedin", label: "LinkedIn", icon: "in" },
+  { id: "youtube", label: "YouTube", icon: "yt" },
+  { id: "tiktok", label: "TikTok", icon: "tt" },
 ];
 
 const COUNTRIES = [
@@ -472,7 +500,7 @@ function StepFetch({ data, setData, setStep }) {
   const [fetching, setFetching] = useState(false);
   const [status, setStatus] = useState("");
   const [researchPlatforms, setResearchPlatforms] = useState(data.researchPlatforms || ["google"]);
-  const [resultRange, setResultRange] = useState(data.resultRange || [10, 20]);
+  const [resultRange, setResultRange] = useState(data.resultRange || [40, 50]);
   const [locations, setLocations] = useState(data.researchLocations || ["global"]);
 
   const togPlatform = (id) => {
@@ -567,10 +595,14 @@ SOURCE: [which platform this came from, e.g. Twitter, Google News, Reddit, Insta
 SUMMARY: [2 to 3 sentence summary of what happened or what was posted]
 SIGNIFICANCE: [why this matters for content creation]
 DATE: [the date, e.g. April 12, 2026]
+TYPE: [exactly one of: product_launch, market_move, repositioning, expansion, campaign, controversy, collab, other]
+URL: [the exact link to the article or post you found in your search results. Copy it as found. If you did not find a link for this item, write none. Never invent or guess a URL]
+HOT: [a number from 1 to 10 for how much this is trending right now: how many outlets are covering it, how much it is being discussed, how fresh it is. 10 means everyone in this space is talking about it today]
 ---
 
 IMPORTANT RULES:
-- Each item MUST have all 6 fields: HEADLINE, BRAND, SOURCE, SUMMARY, SIGNIFICANCE, DATE
+- Each item MUST have all 9 fields: HEADLINE, BRAND, SOURCE, SUMMARY, SIGNIFICANCE, DATE, TYPE, URL, HOT
+- URL must come from your actual search results. A wrong URL is worse than none
 - Each item MUST end with --- on its own line
 - Do NOT use any other format, headers, or markdown
 - Do NOT write an introduction or conclusion
@@ -588,7 +620,7 @@ IMPORTANT RULES:
     for (const block of blocks) {
       const extract = (key) => {
         const patterns = [
-          new RegExp(`${key}:\\s*(.+?)(?=\\n(?:HEADLINE|BRAND|SOURCE|SUMMARY|SIGNIFICANCE|DATE):|$)`, "s"),
+          new RegExp(`${key}:\\s*(.+?)(?=\\n(?:HEADLINE|BRAND|SOURCE|SUMMARY|SIGNIFICANCE|DATE|TYPE|URL|HOT):|$)`, "s"),
           new RegExp(`${key}:\\s*(.+?)(?=\\n[A-Z]+:|$)`, "s"),
           new RegExp(`\\*\\*${key}:?\\*\\*\\s*(.+?)(?=\\n|$)`, "s"),
         ];
@@ -601,6 +633,11 @@ IMPORTANT RULES:
 
       const headline = extract("HEADLINE");
       if (headline && headline.length > 5) {
+        const rawType = extract("TYPE").toLowerCase().replace(/[^a-z_]/g, "");
+        const type = SIGNAL_TYPES.some((t) => t.id === rawType) ? rawType : "other";
+        const rawUrl = extract("URL").replace(/[<>\s]/g, "");
+        const url = /^https?:\/\//i.test(rawUrl) && !/^https?:\/\/none/i.test(rawUrl) ? rawUrl : "";
+        const hotNum = parseInt(extract("HOT"), 10);
         newsItems.push({
           id: Math.random().toString(36).substr(2, 9),
           headline,
@@ -609,6 +646,11 @@ IMPORTANT RULES:
           summary: extract("SUMMARY"),
           significance: extract("SIGNIFICANCE"),
           date: extract("DATE"),
+          type,
+          url,
+          domain: url ? domainOf(url) : "",
+          hot: isNaN(hotNum) ? 0 : Math.max(1, Math.min(10, hotNum)),
+          verified: null,
           selected: false,
         });
       }
@@ -628,6 +670,7 @@ IMPORTANT RULES:
     }
 
     setData((d) => ({ ...d, fetchedNews: newsItems }));
+    verifyLinks(newsItems, setData);
     setFetching(false);
     setStatus("");
     setStep(4);
@@ -635,7 +678,7 @@ IMPORTANT RULES:
 
   return (
     <div>
-      <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Fetch News</h2>
+      <h2 style={{ color: S.text, fontSize: 26, fontWeight: 600, letterSpacing: "-.015em", marginBottom: 4 }}>Fetch News</h2>
       <p style={{ color: S.muted, fontSize: 14, marginBottom: 18 }}>Configure search, then fetch signals.</p>
 
       {/* Research Platforms */}
@@ -645,7 +688,7 @@ IMPORTANT RULES:
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {RESEARCH_PLATFORMS.map((p) => (
             <Tg key={p.id} selected={researchPlatforms.includes(p.id)} onClick={() => togPlatform(p.id)}>
-              {p.icon} {p.label}
+              {p.label}
             </Tg>
           ))}
         </div>
@@ -667,16 +710,16 @@ IMPORTANT RULES:
       {/* Result Count */}
       <Cd style={{ marginBottom: 12, padding: 16 }}>
         <Lb>Result Range</Lb>
-        <p style={{ color: S.muted, fontSize: 12, marginBottom: 10 }}>How many signals to fetch. More results take longer.</p>
+        <p style={{ color: S.muted, fontSize: 12, marginBottom: 10 }}>How many signals to fetch. Fifty is the default: the ten hottest come first, the rest sit behind one click.</p>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ color: "#888", fontSize: 13 }}>Min</span>
+            <span style={{ color: S.text2, fontSize: 13 }}>Min</span>
             <In value={resultRange[0]} onChange={(v) => { const n = parseInt(v) || 5; setResultRange([n, Math.max(n, resultRange[1])]); setData((d) => ({ ...d, resultRange: [n, Math.max(n, resultRange[1])] })); }}
               type="number" style={{ width: 70, padding: "8px 10px", fontSize: 13, textAlign: "center" }} />
           </div>
-          <span style={{ color: "#555" }}>to</span>
+          <span style={{ color: S.muted }}>to</span>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ color: "#888", fontSize: 13 }}>Max</span>
+            <span style={{ color: S.text2, fontSize: 13 }}>Max</span>
             <In value={resultRange[1]} onChange={(v) => { const n = parseInt(v) || 10; setResultRange([Math.min(resultRange[0], n), n]); setData((d) => ({ ...d, resultRange: [Math.min(resultRange[0], n), n] })); }}
               type="number" style={{ width: 70, padding: "8px 10px", fontSize: 13, textAlign: "center" }} />
           </div>
@@ -686,32 +729,32 @@ IMPORTANT RULES:
       {/* Summary + Fetch Button */}
       <Cd>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 10 }}>
+          <div style={{ background: S.sunken, borderRadius: 8, padding: 10 }}>
             <div style={{ color: S.muted, fontSize: 10, textTransform: "uppercase", marginBottom: 3 }}>Target</div>
-            <div style={{ color: "#fff", fontSize: 13 }}>
+            <div style={{ color: S.text, fontSize: 13, fontWeight: 500 }}>
               {data.targetMode === "accounts"
                 ? `${(data.accountList || "").split("\n").filter((l) => l.trim()).length} accounts`
                 : data.niche || "N/A"}
             </div>
           </div>
-          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 10 }}>
+          <div style={{ background: S.sunken, borderRadius: 8, padding: 10 }}>
             <div style={{ color: S.muted, fontSize: 10, textTransform: "uppercase", marginBottom: 3 }}>Platforms</div>
-            <div style={{ color: "#fff", fontSize: 13 }}>{researchPlatforms.length} selected</div>
+            <div style={{ color: S.text, fontSize: 13, fontWeight: 500 }}>{researchPlatforms.length} selected</div>
           </div>
-          <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 10 }}>
+          <div style={{ background: S.sunken, borderRadius: 8, padding: 10 }}>
             <div style={{ color: S.muted, fontSize: 10, textTransform: "uppercase", marginBottom: 3 }}>Location</div>
-            <div style={{ color: "#fff", fontSize: 13 }}>{locations.includes("global") ? "Global" : locations.length + " regions"}</div>
+            <div style={{ color: S.text, fontSize: 13, fontWeight: 500 }}>{locations.includes("global") ? "Global" : locations.length + " regions"}</div>
           </div>
         </div>
         {fetching ? (
           <div style={{ textAlign: "center", padding: "36px 0" }}>
-            <div style={{ width: 36, height: 36, border: "3px solid #222", borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
+            <div style={{ width: 36, height: 36, border: `3px solid ${S.hair}`, borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
             <div style={{ color: S.accent, fontSize: 15, fontWeight: 600 }}>{status}</div>
             <div style={{ color: S.muted, fontSize: 13, marginTop: 4 }}>This may take 30 to 90 seconds depending on platforms...</div>
           </div>
         ) : (
           <Btn onClick={fetchNews} style={{ width: "100%" }}>
-            🔍 Fetch {resultRange[0]} to {resultRange[1]} Signals from {researchPlatforms.length} Platform{researchPlatforms.length > 1 ? "s" : ""}
+            Fetch {resultRange[0]} to {resultRange[1]} signals from {researchPlatforms.length} platform{researchPlatforms.length > 1 ? "s" : ""}
           </Btn>
         )}
       </Cd>
@@ -719,62 +762,117 @@ IMPORTANT RULES:
   );
 }
 
-function StepSelect({ data, setData }) {
+function StepSelect({ data, setData, saved, updateSaved, notify, openFolders }) {
   const news = data.fetchedNews || [];
   const ct = news.filter((n) => n.selected).length;
-  const [page, setPage] = useState(0);
-  const perPage = 8;
-  const totalPages = Math.max(1, Math.ceil(news.length / perPage));
-  const paged = news.slice(page * perPage, (page + 1) * perPage);
+  const [showMore, setShowMore] = useState(false);
+  const [sort, setSort] = useState("latest");
+  const sourceOpened = saved?.sourceOpened || {};
+
+  const parseDate = (s) => { const t = Date.parse(s || ""); return isNaN(t) ? 0 : t; };
+  // Hot first: the model's 1 to 10 trending score, recency as the tie break.
+  const hotScore = (n) => (n.hot || 0) * 10 + parseDate(n.date) / 1e13;
+  const TOP = 10;
+  const ranked = [...news].sort((a, b) => hotScore(b) - hotScore(a));
+  const top = ranked.slice(0, TOP);
+  const topIds = new Set(top.map((n) => n.id));
+  const rest = news.filter((n) => !topIds.has(n.id)).sort((a, b) => (sort === "latest" ? parseDate(b.date) - parseDate(a.date) : parseDate(a.date) - parseDate(b.date)));
+
+  // Controversy guardrail: a crisis signal with a source cannot be selected until that source has been opened.
+  const isLocked = (n) => n.type === "controversy" && !!n.url && !sourceOpened[n.id];
+  const toggle = (n) => {
+    if (isLocked(n)) { notify && notify("Open the source first. Controversy signals need a real read before you build on them."); return; }
+    setData((d) => ({ ...d, fetchedNews: d.fetchedNews.map((x) => (x.id === n.id ? { ...x, selected: !x.selected } : x)) }));
+  };
+  const markOpened = (n) => updateSaved && updateSaved((s) => { s.sourceOpened = s.sourceOpened || {}; s.sourceOpened[n.id] = true; });
+  const selectAll = () => setData((d) => ({ ...d, fetchedNews: d.fetchedNews.map((n) => (isLocked(n) ? n : { ...n, selected: true })) }));
+
+  const renderCard = (n, hot) => {
+    const locked = isLocked(n);
+    const isSaved = !!saved?.signals?.[signalKey(n)];
+    return (
+      <Cd key={n.id} className={`ce-card-select ${isSaved ? "ce-saved" : ""}`} onClick={() => toggle(n)}
+        style={{ borderColor: n.selected ? "var(--ink)" : S.border, boxShadow: n.selected ? "0 0 0 1px var(--ink)" : "none", cursor: locked ? "default" : "pointer", padding: "16px 18px 12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flex: 1 }}>
+            <TypeBadge type={n.type || "other"} />
+            {n.brand && <span style={{ fontSize: 12.5, fontWeight: 600, color: S.text }}>{n.brand}</span>}
+            {hot && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: ".09em", textTransform: "uppercase", background: S.accentSoft, color: S.accent, padding: "3px 8px", borderRadius: 999 }}>hot · {n.hot || "?"}/10</span>}
+            <span style={{ marginLeft: "auto", fontFamily: "var(--f-mono)", fontSize: 11.5, color: S.muted }}>{n.date}</span>
+          </div>
+          <div aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 5, border: `1.5px solid ${n.selected ? "var(--ink)" : locked ? S.border : S.borderField}`, background: n.selected ? "var(--ink)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0, opacity: locked ? 0.5 : 1 }}>
+            {n.selected && <CheckIcon color="var(--ink-inv)" />}
+          </div>
+        </div>
+        <div style={{ color: S.text, fontWeight: 600, fontSize: 16, lineHeight: 1.35, letterSpacing: "-.01em", margin: "10px 0 6px" }}>{n.headline}</div>
+        <div style={{ color: S.text2, fontSize: 13.5, lineHeight: 1.55 }}>{n.summary}</div>
+        {n.significance && (
+          <div style={{ borderLeft: "3px solid var(--blue)", padding: "1px 0 1px 12px", margin: "12px 0 0" }}>
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: ".13em", textTransform: "uppercase", color: S.link, display: "block", marginBottom: 3 }}>Why this matters</span>
+            <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: S.text }}>{n.significance}</p>
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 12, paddingTop: 12, borderTop: `1px solid ${S.hair}`, fontFamily: "var(--f-mono)", fontSize: 11.5, color: S.muted }}>
+          {n.url ? (
+            <a href={n.url} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); markOpened(n); }} style={{ color: S.link, textDecoration: "none", borderBottom: "1px solid currentColor" }}>{n.domain || n.source || "source"} ↗</a>
+          ) : (
+            <span>{n.source || "source not given"}</span>
+          )}
+          {n.url && n.verified === true && <span style={{ color: "var(--positive)" }}>✓ link verified</span>}
+          {n.url && n.verified === false && <span style={{ color: S.warning }}>link not verified</span>}
+          {!n.url && <span style={{ color: S.warning }}>no link · verify before posting</span>}
+          <span style={{ flex: 1 }} />
+          {locked && <span style={{ background: S.warningFill, color: S.warning, padding: "3px 8px", borderRadius: 999 }}>open the source to unlock</span>}
+          <BookmarkButton item={n} saved={saved} updateSaved={updateSaved} onFolders={openFolders} notify={notify} />
+        </div>
+      </Cd>
+    );
+  };
+
+  const sortChip = (v, l) => (
+    <span key={v} role="button" tabIndex={0} className="ce-tag ce-focus" onClick={() => setSort(v)} onKeyDown={(e) => { if (e.key === "Enter") setSort(v); }}
+      style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12, cursor: "pointer", background: sort === v ? "var(--ink)" : S.card, color: sort === v ? S.inv : S.text2, border: `1px solid ${sort === v ? "var(--ink)" : S.border}`, fontWeight: 500 }}>{l}</span>
+  );
 
   return (
     <div>
-      <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Select News</h2>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      <h2 style={{ color: S.text, fontSize: 26, fontWeight: 600, letterSpacing: "-.015em", marginBottom: 4 }}>Select News</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 10, flexWrap: "wrap" }}>
         <span style={{ color: S.muted, fontSize: 14 }}>{news.length} found · {ct} selected</span>
-        <Btn v="ghost" onClick={() => setData((d) => ({ ...d, fetchedNews: d.fetchedNews.map((n) => ({ ...n, selected: true })) }))} style={{ padding: "5px 10px", fontSize: 12 }}>Select All</Btn>
+        <Btn v="ghost" onClick={selectAll} style={{ padding: "5px 10px", fontSize: 12 }}>Select All</Btn>
       </div>
 
       {ct > 0 && (
-        <div style={{ background: "#0f1a00", border: "1px solid #2a3d00", borderRadius: 8, padding: "8px 14px", marginBottom: 12, color: S.accent, fontWeight: 600, fontSize: 14 }}>
+        <div style={{ background: S.accentSoft, border: `1px solid ${S.accentFill}`, borderRadius: 8, padding: "8px 14px", marginBottom: 12, color: S.accent, fontWeight: 600, fontSize: 14 }}>
           {ct} signal{ct > 1 ? "s" : ""} selected
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {paged.map((n) => (
-          <Cd key={n.id} style={{ borderColor: n.selected ? S.accent : S.border, cursor: "pointer" }}
-            onClick={() => setData((d) => ({ ...d, fetchedNews: d.fetchedNews.map((x) => x.id === n.id ? { ...x, selected: !x.selected } : x) }))}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ color: "#fff", fontWeight: 600, fontSize: 14, marginBottom: 3, flex: 1 }}>{n.headline}</div>
-              <div style={{
-                width: 20, height: 20, borderRadius: 5, border: `2px solid ${n.selected ? S.accent : "#444"}`,
-                background: n.selected ? S.accent : "transparent", display: "flex", alignItems: "center",
-                justifyContent: "center", flexShrink: 0, marginLeft: 10
-              }}>
-                {n.selected && <span style={{ color: "#000", fontSize: 12, fontWeight: 700 }}>✓</span>}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-              <span style={{ background: "#1a1a1a", color: S.accent, padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{n.brand}</span>
-              {n.source && <span style={{ background: "#1a1a1a", color: "#888", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>{n.source}</span>}
-              <span style={{ color: "#555", fontSize: 12 }}>{n.date}</span>
-            </div>
-            <div style={{ color: "#999", fontSize: 13 }}>{n.summary}</div>
-          </Cd>
-        ))}
-      </div>
+      {news.length === 0 && <Cd style={{ textAlign: "center", color: S.muted }}>No signals yet. Go back a step and fetch.</Cd>}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 16 }}>
-          <Btn v="secondary" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
-            style={{ padding: "6px 14px", fontSize: 12 }}>← Prev</Btn>
-          <span style={{ color: S.muted, fontSize: 13 }}>
-            Page {page + 1} of {totalPages}
-          </span>
-          <Btn v="secondary" onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-            style={{ padding: "6px 14px", fontSize: 12 }}>Next →</Btn>
+      {top.length > 0 && (
+        <>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, margin: "6px 0 8px" }}>
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: ".13em", textTransform: "uppercase", color: S.muted, whiteSpace: "nowrap" }}>Worth your time · {top.length} hot signals</span>
+            <span style={{ flex: 1, height: 1, background: S.hair }} />
+          </div>
+          <p style={{ color: S.muted, fontSize: 12.5, margin: "0 0 12px" }}>Ranked by how much each story is trending right now: outlets covering it, discussion around it, and how fresh it is.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{top.map((n) => renderCard(n, true))}</div>
+        </>
+      )}
+
+      {rest.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <Btn v="secondary" onClick={() => setShowMore((s) => !s)} style={{ padding: "8px 14px", fontSize: 13 }}>{showMore ? `Hide ${rest.length} more` : `Show ${rest.length} more signals`}</Btn>
+            {showMore && (
+              <span style={{ display: "inline-flex", gap: 6, marginLeft: "auto", alignItems: "center" }}>
+                <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: ".12em", textTransform: "uppercase", color: S.muted }}>sort</span>
+                {sortChip("latest", "Latest first")}{sortChip("oldest", "Oldest first")}
+              </span>
+            )}
+          </div>
+          {showMore && <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>{rest.map((n) => renderCard(n, false))}</div>}
         </div>
       )}
     </div>
@@ -784,27 +882,27 @@ function StepSelect({ data, setData }) {
 function StepPlatforms({ data, setData }) {
   const tog = (id) => { const c = data.selectedPlatforms || []; setData((d) => ({ ...d, selectedPlatforms: c.includes(id) ? c.filter((p) => p !== id) : [...c, id] })); };
   return (
-    <div><h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Platforms</h2>
+    <div><h2 style={{ color: S.text, fontSize: 26, fontWeight: 600, letterSpacing: "-.015em", marginBottom: 4 }}>Platforms</h2>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
         {PLATFORMS.map((p) => {
           const s = (data.selectedPlatforms || []).includes(p.id);
-          return <Cd key={p.id} onClick={() => tog(p.id)} style={{ cursor: "pointer", borderColor: s ? S.accent : S.border, textAlign: "center", padding: 18 }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>{p.icon}</div><div style={{ color: "#fff", fontWeight: 600 }}>{p.label}</div><div style={{ color: S.muted, fontSize: 12 }}>{p.desc}</div>
+          return <Cd key={p.id} className="ce-card-select" onClick={() => tog(p.id)} style={{ cursor: "pointer", borderColor: s ? "var(--ink)" : S.border, background: s ? "var(--wash-selected)" : S.card, textAlign: "center", padding: 18 }}>
+            <div style={{ marginBottom: 8, display: "flex", justifyContent: "center" }}><Mark text={p.icon} size={34} tone={s ? "accent" : "azure"} /></div><div style={{ color: S.text, fontWeight: 600 }}>{p.label}</div><div style={{ color: S.muted, fontSize: 12 }}>{p.desc}</div>
           </Cd>;
         })}
       </div>
       {(data.selectedPlatforms || []).includes("email") && (
         <Cd><Lb>Email Personalisation</Lb><TA value={data.emailPersonalisation || ""} onChange={(v) => setData((d) => ({ ...d, emailPersonalisation: v }))} placeholder="First Name, Company..." rows={2} />
-          <div style={{ marginTop: 12, borderTop: "1px solid #1e1e1e", paddingTop: 12 }}><Lb>Or Import CSV</Lb>
-            <label style={{ display: "inline-block", padding: "8px 16px", borderRadius: 8, background: "#1a1a1a", border: "1px solid #333", color: S.text, fontSize: 13, cursor: "pointer" }}>
-              📁 Choose CSV<input type="file" accept=".csv" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const rd = new FileReader(); rd.onload = (ev) => setData((d) => ({ ...d, emailCsvData: parseCSV(ev.target.result) })); rd.readAsText(file); }} /></label></div>
+          <div style={{ marginTop: 12, borderTop: `1px solid ${S.hair}`, paddingTop: 12 }}><Lb>Or Import CSV</Lb>
+            <label style={{ display: "inline-block", padding: "8px 16px", borderRadius: 8, background: S.card, border: `1px solid ${S.border}`, color: S.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              Choose CSV<input type="file" accept=".csv" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const rd = new FileReader(); rd.onload = (ev) => setData((d) => ({ ...d, emailCsvData: parseCSV(ev.target.result) })); rd.readAsText(file); }} /></label></div>
           {data.emailCsvData && (
-            <div style={{ marginTop: 12, background: "#0a0a0a", borderRadius: 8, padding: 12 }}>
+            <div style={{ marginTop: 12, background: S.sunken, borderRadius: 8, padding: 12 }}>
               <div style={{ color: S.accent, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{data.emailCsvData.headers.length} cols, {data.emailCsvData.rows.length} rows</div>
               <Lb>Field Mapping</Lb>
               {data.emailCsvData.headers.map((h) => (
                 <div key={h} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ color: "#888", fontSize: 13, width: 130 }}>{h}</span><span style={{ color: "#555" }}>→</span>
+                  <span style={{ color: S.text2, fontSize: 13, width: 130 }}>{h}</span><span style={{ color: S.muted }}>→</span>
                   <In value={data.emailFieldMap?.[h] || ""} onChange={(v) => setData((d) => ({ ...d, emailFieldMap: { ...(d.emailFieldMap || {}), [h]: v } }))} placeholder={`{{${h.toLowerCase().replace(/\s/g, "_")}}}`} style={{ flex: 1, padding: "6px 10px", fontSize: 12 }} />
                 </div>))}
             </div>
@@ -869,17 +967,17 @@ function StepGen({ data, setData, setStep }) {
 
   const sn = (data.fetchedNews || []).filter((n) => n.selected); const pl = data.selectedPlatforms || [];
   return (
-    <div><h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Generate</h2>
+    <div><h2 style={{ color: S.text, fontSize: 26, fontWeight: 600, letterSpacing: "-.015em", marginBottom: 4 }}>Generate</h2>
       <p style={{ color: S.muted, fontSize: 14, marginBottom: 20 }}>{sn.length} × {pl.length} = {sn.length * pl.length} pieces</p>
       {g ? (
         <div style={{ textAlign: "center", padding: "36px 0" }}>
-          <div style={{ width: 36, height: 36, border: "3px solid #222", borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
+          <div style={{ width: 36, height: 36, border: `3px solid ${S.hair}`, borderTopColor: S.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
           <div style={{ color: S.accent, fontSize: 15, fontWeight: 600 }}>{pr.c}/{pr.t}</div>
           <div style={{ color: S.muted, fontSize: 13 }}>{pr.l}</div>
-          <div style={{ width: "100%", height: 4, background: "#1a1a1a", borderRadius: 2, marginTop: 14, overflow: "hidden" }}>
+          <div style={{ width: "100%", height: 4, background: S.hair, borderRadius: 2, marginTop: 14, overflow: "hidden" }}>
             <div style={{ width: `${(pr.c / pr.t) * 100}%`, height: "100%", background: S.accent, transition: "width 0.5s" }} /></div>
         </div>
-      ) : <Btn onClick={go} style={{ width: "100%" }}>⚡ Generate All Content</Btn>}
+      ) : <Btn onClick={go} style={{ width: "100%" }}>Generate all content</Btn>}
     </div>
   );
 }
@@ -896,15 +994,15 @@ function Redo({ label, value, onUpdate, data, platform, children }) {
     onUpdate(r); setLd(false); setShow(false); setInp("");
   };
   return (
-    <div style={{ background: "#0a0a0a", borderRadius: 8, padding: 16 }}>
+    <div style={{ background: S.sunken, borderRadius: 10, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ color: S.accent, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
-        <Btn v="secondary" onClick={() => setShow(!show)} style={{ padding: "4px 10px", fontSize: 11 }}>🔄 Redo</Btn>
+        <Btn v="secondary" onClick={() => setShow(!show)} style={{ padding: "4px 10px", fontSize: 11 }}>Redo</Btn>
       </div>
-      <div style={{ color: "#ddd", fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{value}</div>
+      <div style={{ color: S.text, fontSize: 14.5, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{value}</div>
       {children}
       {show && (
-        <div style={{ marginTop: 10, padding: 10, background: S.card, borderRadius: 8, border: "1px solid #1e1e1e" }}>
+        <div style={{ marginTop: 10, padding: 10, background: S.card, borderRadius: 8, border: `1px solid ${S.hair}` }}>
           <TA value={inp} onChange={setInp} placeholder="What to change..." rows={2} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <Btn onClick={go} disabled={ld || !inp.trim()} style={{ padding: "6px 12px", fontSize: 12 }}>{ld ? "..." : "Redo"}</Btn>
@@ -917,7 +1015,7 @@ function Redo({ label, value, onUpdate, data, platform, children }) {
   );
 }
 
-function ContentBlock({ content, platform, newsItem, data, setData }) {
+function ContentBlock({ content, platform, newsItem, data, setData, onSaveDraft, draftSaved }) {
   const [cur, setCur] = useState(content);
   const [gi, setGi] = useState(false);
   const [img, setImg] = useState(null);
@@ -943,10 +1041,15 @@ function ContentBlock({ content, platform, newsItem, data, setData }) {
   const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
-    <Cd style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 18 }}>{pf?.icon}</span><span style={{ color: "#fff", fontWeight: 600 }}>{pf?.label}</span></div>
-        {!isI && <Btn v="secondary" onClick={() => setShowR(!showR)} style={{ padding: "6px 12px", fontSize: 12 }}>🔄 Redo</Btn>}
+    <Cd style={{ marginBottom: 12, padding: 0, overflow: "hidden" }}>
+      {newsItem?.type === "controversy" && <div style={{ fontFamily: "var(--f-mono)", fontSize: 11, background: S.warningFill, color: S.warning, padding: "6px 20px", borderBottom: `1px solid ${S.hair}` }}>Controversy signal · verify the source before posting</div>}
+      <div style={{ padding: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Mark text={PLATFORM_MARK[platform] || "•"} tone="azure" /><span style={{ color: S.text, fontWeight: 600 }}>{pf?.label}</span></div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {onSaveDraft && <Btn v={draftSaved ? "ghost" : "secondary"} onClick={() => onSaveDraft(platform, cur)} style={{ padding: "6px 12px", fontSize: 12 }}>{draftSaved ? "Saved ✓" : "Save draft"}</Btn>}
+          {!isI && <Btn v="secondary" onClick={() => setShowR(!showR)} style={{ padding: "6px 12px", fontSize: 12 }}>Redo</Btn>}
+        </div>
       </div>
 
       {isI && has ? (
@@ -955,10 +1058,10 @@ function ContentBlock({ content, platform, newsItem, data, setData }) {
           {sec.CREATIVE_DETAILS != null && <Redo label="Creative Instructions" value={sec.CREATIVE_DETAILS} onUpdate={(v) => upSec("CREATIVE_DETAILS", v)} data={data} platform="Instagram" />}
           {sec.IMAGE_PROMPT != null && (
             <Redo label="Image Generation Prompt" value={sec.IMAGE_PROMPT} onUpdate={(v) => upSec("IMAGE_PROMPT", v)} data={data} platform="Instagram">
-              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #1e1e1e" }}>
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${S.hair}` }}>
                 {!data.googleKey ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ color: "#888", fontSize: 12 }}>Enter your Google API key to generate creatives (runs in your browser, no timeout limit)</div>
+                    <div style={{ color: S.text2, fontSize: 12 }}>Enter your Google API key to generate creatives (runs in your browser, no timeout limit)</div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <In value={data.googleKey || ""} onChange={(v) => setData((d) => ({ ...d, googleKey: v }))} placeholder="Google AI API key (aistudio.google.com/apikey)" type="password" style={{ flex: 1, padding: "8px 12px", fontSize: 12 }} />
                     </div>
@@ -966,12 +1069,12 @@ function ContentBlock({ content, platform, newsItem, data, setData }) {
                 ) : (
                   <div>
                     <Btn v="ghost" onClick={genC} disabled={gi} style={{ padding: "8px 16px", fontSize: 13 }}>
-                      {gi ? `Generating... ${fmtTime(elapsed)}` : "🎨 Generate Creative (Nano Banana Pro)"}
+                      {gi ? `Generating... ${fmtTime(elapsed)}` : "Generate creative (Nano Banana Pro)"}
                     </Btn>
                     {gi && (
-                      <div style={{ marginTop: 8, color: "#888", fontSize: 12 }}>
+                      <div style={{ marginTop: 8, color: S.text2, fontSize: 12 }}>
                         This takes 3 to 5 minutes. Runs directly in your browser, no timeout.
-                        <div style={{ width: "100%", height: 3, background: "#1a1a1a", borderRadius: 2, marginTop: 6, overflow: "hidden" }}>
+                        <div style={{ width: "100%", height: 3, background: S.hair, borderRadius: 2, marginTop: 6, overflow: "hidden" }}>
                           <div style={{ width: `${Math.min((elapsed / 300) * 100, 95)}%`, height: "100%", background: S.accent, transition: "width 1s linear" }} />
                         </div>
                       </div>
@@ -979,18 +1082,18 @@ function ContentBlock({ content, platform, newsItem, data, setData }) {
                   </div>
                 )}
               </div>
-              {img && <div style={{ marginTop: 10 }}>{img.error ? <div style={{ background: "#1a0000", border: "1px solid #330000", borderRadius: 8, padding: 10, color: "#ff6666", fontSize: 13 }}>{img.error}</div> : <img src={img.image} alt="" style={{ width: "100%", borderRadius: 8 }} />}</div>}
+              {img && <div style={{ marginTop: 10 }}>{img.error ? <div style={{ background: S.dangerFill, border: `1px solid ${S.danger}`, borderRadius: 8, padding: 10, color: S.danger, fontSize: 13 }}>{img.error}</div> : <img src={img.image} alt="" style={{ width: "100%", borderRadius: 8 }} />}</div>}
             </Redo>
           )}
         </div>
       ) : has ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {Object.entries(sec).map(([k, v]) => <div key={k} style={{ background: "#0a0a0a", borderRadius: 8, padding: 16 }}><div style={{ color: S.accent, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{k.replace(/_/g, " ")}</div><div style={{ color: "#ddd", fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{v}</div></div>)}
+          {Object.entries(sec).map(([k, v]) => <div key={k} style={{ background: S.sunken, borderRadius: 10, padding: 16 }}><div style={{ color: S.accent, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{k.replace(/_/g, " ")}</div><div style={{ color: S.text, fontSize: 14.5, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{v}</div></div>)}
         </div>
-      ) : <div style={{ color: "#ddd", fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap", background: "#0a0a0a", borderRadius: 8, padding: 16 }}>{cur}</div>}
+      ) : <div style={{ color: S.text, fontSize: 14.5, lineHeight: 1.7, whiteSpace: "pre-wrap", background: S.sunken, borderRadius: 10, padding: 16 }}>{cur}</div>}
 
       {!isI && showR && (
-        <div style={{ marginTop: 12, padding: 12, background: "#0a0a0a", borderRadius: 8 }}>
+        <div style={{ marginTop: 12, padding: 12, background: S.sunken, borderRadius: 8 }}>
           <TA value={ri} onChange={setRi} placeholder="What to change..." rows={2} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <Btn onClick={redoAll} disabled={rd || !ri.trim()} style={{ padding: "8px 14px", fontSize: 13 }}>{rd ? "..." : "Regenerate"}</Btn>
@@ -998,35 +1101,54 @@ function ContentBlock({ content, platform, newsItem, data, setData }) {
           </div>{rd && <Spinner />}
         </div>
       )}
+      </div>
     </Cd>
   );
 }
 
 // =================== STEP: RESULTS ===================
 
-function StepResults({ data, setData }) {
+function StepResults({ data, setData, saved, updateSaved, notify }) {
   const [aid, setAid] = useState(null);
   const sn = (data.fetchedNews || []).filter((n) => n.selected);
   const ct = data.generatedContent || {};
   useEffect(() => { if (sn.length && !aid) setAid(sn[0].id); }, [sn]);
+  const active = sn.find((n) => n.id === aid);
+
+  // Save a generated piece to the profile. One draft per signal + platform; saving again removes it.
+  const saveDraft = (item, platform, text) => {
+    if (!updateSaved || !item) return;
+    const id = `${signalKey(item)}|${platform}`;
+    if (saved?.drafts?.[id]) { updateSaved((s) => { delete s.drafts[id]; }); notify && notify("Draft removed from saved."); return; }
+    updateSaved((s) => { s.drafts[id] = { id, signalKey: signalKey(item), signalHeadline: item.headline, brand: item.brand, type: item.type || "other", platform, content: text, savedAt: Date.now(), folders: [] }; });
+    notify && notify("Draft saved. It is under Profile, in Drafts.");
+  };
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <h2 style={{ color: "#fff", fontSize: 28, fontWeight: 700, margin: 0 }}>Your Content</h2>
-        <Btn v="ghost" onClick={() => exportCSV(ct, sn, data.selectedPlatforms || [])} style={{ padding: "8px 14px", fontSize: 13 }}>📥 Export CSV</Btn>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 10, flexWrap: "wrap" }}>
+        <h2 style={{ color: S.text, fontSize: 26, fontWeight: 600, letterSpacing: "-.015em", margin: 0 }}>Your Content</h2>
+        <Btn v="ghost" onClick={() => exportCSV(ct, sn, data.selectedPlatforms || [])} style={{ padding: "8px 14px", fontSize: 13 }}>Export CSV</Btn>
       </div>
-      <p style={{ color: S.muted, fontSize: 14, marginBottom: 16 }}>Review, redo, or export.</p>
+      <p style={{ color: S.muted, fontSize: 14, marginBottom: 16 }}>Review, redo, save, or export.</p>
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
         {sn.map((n) => <Tg key={n.id} selected={aid === n.id} onClick={() => setAid(n.id)}>{n.headline.substring(0, 28)}...</Tg>)}
       </div>
-      {aid && ct[aid] && (
+      {active && ct[aid] && (
         <div>
-          <div style={{ background: "#0f1a00", border: "1px solid #2a3d00", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
-            <div style={{ color: S.accent, fontSize: 14, fontWeight: 600 }}>{sn.find((n) => n.id === aid)?.headline}</div>
+          <div style={{ background: S.accentSoft, border: `1px solid ${S.accentFill}`, borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+              <TypeBadge type={active.type || "other"} />
+              {active.brand && <span style={{ fontSize: 12.5, fontWeight: 600, color: S.text }}>{active.brand}</span>}
+              {active.url && <a href={active.url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "auto", fontFamily: "var(--f-mono)", fontSize: 11.5, color: S.link }}>{active.domain || active.source} ↗</a>}
+            </div>
+            <div style={{ color: S.text, fontSize: 14.5, fontWeight: 600, lineHeight: 1.35 }}>{active.headline}</div>
           </div>
           {(data.selectedPlatforms || []).map((pid) => {
-            const c = ct[aid]?.[pid]; return c ? <ContentBlock key={pid} content={c} platform={pid} newsItem={sn.find((n) => n.id === aid)} data={data} setData={setData} /> : null;
+            const c = ct[aid]?.[pid];
+            if (!c) return null;
+            const draftId = `${signalKey(active)}|${pid}`;
+            return <ContentBlock key={pid} content={c} platform={pid} newsItem={active} data={data} setData={setData} onSaveDraft={(platform, text) => saveDraft(active, platform, text)} draftSaved={!!saved?.drafts?.[draftId]} />;
           })}
         </div>
       )}
@@ -1038,6 +1160,13 @@ function StepResults({ data, setData }) {
 
 export default function ContentEngine() {
   const [step, setStep] = useState(0);
+  const [entered, setEntered] = useState(false);
+  const [saved, setSaved] = useState({ signals: {}, drafts: {}, folders: [], sourceOpened: {} });
+  const [drawer, setDrawer] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [pop, setPop] = useState(null);
+  const [theme, setThemeState] = useState("light");
+  const toastTimer = useRef(null);
   const [data, setData] = useState({
     brandName: "", product: "", brandDescription: "", targetAudience: "", brandPersona: "", brandValues: "",
     platformPersonality: {}, referencePosts: {}, creativeDirection: DEFAULT_CD,
@@ -1046,13 +1175,45 @@ export default function ContentEngine() {
     selectedSignals: [], signalPrompts: {}, fetchedNews: [], selectedPlatforms: [],
     emailPersonalisation: "", emailCsvData: null, emailFieldMap: {},
     generatedContent: {}, atRid: null,
-    googleKey: typeof window !== "undefined" ? localStorage.getItem("ce_google_key") || "" : "",
+    googleKey: "",
   });
+
+  // Client boot: saved items, Google key, theme, whether the opening page was already passed this session,
+  // and the ?demo fixture that lands on Select News with sample signals.
+  useEffect(() => {
+    setSaved(loadSaved());
+    try { const k = localStorage.getItem("ce_google_key"); if (k) setData((d) => ({ ...d, googleKey: k })); } catch {}
+    try { setThemeState(localStorage.getItem("ce_theme") === "dark" ? "dark" : "light"); } catch {}
+    try { if (sessionStorage.getItem("ce_entered") === "1") setEntered(true); } catch {}
+    try {
+      if (new URLSearchParams(window.location.search).has("demo")) {
+        setData((d) => ({ ...d, ...DEMO_BRAND, fetchedNews: DEMO_NEWS }));
+        setEntered(true);
+        setStep(4);
+      }
+    } catch {}
+  }, []);
 
   // Persist Google key to localStorage
   useEffect(() => {
-    if (data.googleKey) localStorage.setItem("ce_google_key", data.googleKey);
+    if (data.googleKey) { try { localStorage.setItem("ce_google_key", data.googleKey); } catch {} }
   }, [data.googleKey]);
+
+  const updateSaved = useCallback((fn) => {
+    setSaved((prev) => { const next = JSON.parse(JSON.stringify(prev)); fn(next); persistSaved(next); return next; });
+  }, []);
+  const notify = useCallback((msg, action) => {
+    setToast({ msg, action });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+  const openFolders = useCallback((keys, rect) => setPop({ keys, kind: "signals", anchor: rect }), []);
+  const setTheme = (t) => {
+    setThemeState(t);
+    try { localStorage.setItem("ce_theme", t); } catch {}
+    if (t === "dark") document.documentElement.setAttribute("data-theme", "dark"); else document.documentElement.removeAttribute("data-theme");
+  };
+  const enter = () => { setEntered(true); try { sessionStorage.setItem("ce_entered", "1"); } catch {} };
 
   const ok = () => {
     switch (step) {
@@ -1069,46 +1230,59 @@ export default function ContentEngine() {
     <StepTargets data={data} setData={setData} />,
     <StepSignals data={data} setData={setData} />,
     <StepFetch data={data} setData={setData} setStep={setStep} />,
-    <StepSelect data={data} setData={setData} />,
+    <StepSelect data={data} setData={setData} saved={saved} updateSaved={updateSaved} notify={notify} openFolders={openFolders} />,
     <StepPlatforms data={data} setData={setData} />,
     <StepGen data={data} setData={setData} setStep={setStep} />,
-    <StepResults data={data} setData={setData} />,
+    <StepResults data={data} setData={setData} saved={saved} updateSaved={updateSaved} notify={notify} />,
   ];
 
+  const savedCount = Object.keys(saved.signals).length + Object.keys(saved.drafts).length;
+
+  if (!entered) return <Opening onEnter={enter} />;
+
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", background: S.bg }}>
       {/* Header */}
-      <div style={{ borderBottom: "1px solid #1a1a1a", padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: S.bg, zIndex: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: S.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: "#000", fontFamily: "'Playfair Display',serif" }}>C</div>
-          <div><div style={{ fontWeight: 700, fontSize: 15 }}>Content Engine</div><div style={{ color: "#555", fontSize: 11 }}>Signal Driven Content</div></div>
+      <div style={{ borderBottom: `1px solid ${S.border}`, padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "color-mix(in srgb, var(--ground) 90%, transparent)", backdropFilter: "blur(10px)", zIndex: 100 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Wordmark size={21} />
+          <span className="ce-hide-sm" style={{ color: S.muted, fontSize: 11, fontFamily: "var(--f-mono)", letterSpacing: ".08em", textTransform: "uppercase", paddingLeft: 12, borderLeft: `1px solid ${S.border}` }}>signal driven content</span>
         </div>
+        <button type="button" className="ce-btn ce-btn-secondary ce-focus" onClick={() => setDrawer(true)} aria-label="Open profile and saved items"
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 34, padding: "0 12px 0 8px", borderRadius: 999, background: S.card, border: `1px solid ${S.border}`, color: S.text, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f-text)" }}>
+          <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: "50%", background: "linear-gradient(135deg, var(--pink), var(--blue))", display: "inline-block" }} />
+          Profile{savedCount > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: S.muted, fontWeight: 500 }}>{savedCount}</span>}
+        </button>
       </div>
 
       {/* Progress */}
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid #111" }}>
+      <div style={{ padding: "12px 24px", borderBottom: `1px solid ${S.hair}` }}>
         <div style={{ display: "flex", gap: 3 }}>
-          {STEPS.map((_, i) => <div key={i} onClick={() => i < step && setStep(i)} style={{ flex: 1, height: 3, borderRadius: 2, cursor: i < step ? "pointer" : "default", background: i <= step ? S.accent : "#1a1a1a" }} />)}
+          {STEPS.map((_, i) => <div key={i} onClick={() => i < step && setStep(i)} style={{ flex: 1, height: 3, borderRadius: 2, cursor: i < step ? "pointer" : "default", background: i <= step ? "var(--ink)" : S.hair, transition: "background var(--d-quick)" }} />)}
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
-          {STEPS.map((s, i) => <div key={i} style={{ fontSize: 10, color: i === step ? S.accent : i < step ? S.muted : "#333", fontWeight: i === step ? 700 : 400, textAlign: "center", flex: 1 }}>{s}</div>)}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+          {STEPS.map((s, i) => <div key={i} style={{ fontSize: 10.5, fontFamily: "var(--f-mono)", letterSpacing: ".04em", color: i === step ? S.text : i < step ? S.muted : "var(--ink-dis)", fontWeight: i === step ? 600 : 400, textAlign: "center", flex: 1 }}>{s}</div>)}
         </div>
       </div>
 
       {/* Content */}
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 20px", animation: "fadeIn 0.3s" }}>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "24px 20px 32px", animation: "fadeIn 0.3s" }}>
         {views[step]}
       </div>
 
       {/* Footer Nav */}
       {step !== 3 && step !== 6 && (
-        <div style={{ position: "sticky", bottom: 0, borderTop: "1px solid #1a1a1a", padding: "12px 24px", background: S.bg, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ position: "sticky", bottom: 0, borderTop: `1px solid ${S.border}`, padding: "12px 24px", background: "color-mix(in srgb, var(--ground) 92%, transparent)", backdropFilter: "blur(10px)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Btn v="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>← Back</Btn>
-          <span style={{ color: "#555", fontSize: 13 }}>{step + 1}/{STEPS.length}</span>
+          <span style={{ color: S.muted, fontSize: 12.5, fontFamily: "var(--f-mono)" }}>{step + 1}/{STEPS.length}</span>
           {step < 7 ? <Btn onClick={() => setStep((s) => s + 1)} disabled={!ok()}>Continue →</Btn>
             : <Btn onClick={() => { setStep(0); setData((d) => ({ ...d, generatedContent: {}, fetchedNews: [] })); }}>Start Over</Btn>}
         </div>
       )}
+
+      <SavedDrawer open={drawer} onClose={() => setDrawer(false)} saved={saved} updateSaved={updateSaved} theme={theme} setTheme={setTheme} notify={notify} />
+      <Toast toast={toast} onAction={(a, rect) => { setToast(null); a.run && a.run(rect); }} />
+      {pop && <FolderPop anchor={pop.anchor} keys={pop.keys} kind={pop.kind} saved={saved} updateSaved={updateSaved} onClose={() => setPop(null)} notify={notify} />}
     </div>
   );
 }

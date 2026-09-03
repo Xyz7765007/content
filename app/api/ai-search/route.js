@@ -24,7 +24,8 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 4096,
+        // 50 signals with eight fields each is roughly 6k output tokens; 4096 truncated the list mid-item.
+        max_tokens: 8192,
         tools: [{ type: "web_search_20250305", name: "web_search" }],
         messages: [{ role: "user", content: prompt }],
       }),
