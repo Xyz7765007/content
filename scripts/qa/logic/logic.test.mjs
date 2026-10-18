@@ -5,6 +5,8 @@ import { enrich, groupStats, wilsonLow, MAX_STRENGTH } from "../../../lib/intel/
 import { evaluate, proofScore, NEEDS } from "../../../lib/studio/ground.js";
 import { topicTerms, overlaps, searchPhrase } from "../../../lib/intel/tools.js";
 import { brandContext } from "../../../lib/intel/brand.js";
+import { standouts } from "../../../lib/intel/standouts.js";
+import { composeBriefing } from "../../../lib/intel/briefing.js";
 
 let passed = 0;
 const t = (name, fn) => {
@@ -108,6 +110,29 @@ t("topics match on meaning words, not stop words", () => {
 t("a malformed brand never throws", () => {
   const ctx = brandContext({ intel: { keywords: "oops", platforms: "instagram", competitors: { instagram: "x" } } }, { niche: 5 });
   assert.ok(Array.isArray(ctx.keywords) && Array.isArray(ctx.platforms));
+});
+
+t("a thin week calls nothing a standout and shows no comparison", () => {
+  // The first live briefing: 3 posts, and two of its "standouts" were below typical.
+  const old = { posts: 3, evidence: [{ url: "a", lift: 1.54 }, { url: "b", lift: 0.5 }, { url: "c", lift: 0.3 }] };
+  const s = standouts(old);
+  assert.equal(s.thin, true);
+  assert.equal(s.title, "Recent posts in your niche");
+  assert.ok(s.posts.every((p) => p.lift == null && p.beat == null));
+});
+
+t("a full week's standouts all clearly beat a typical post", () => {
+  const s = standouts({ posts: 40, thin: false, evidence: [{ url: "a", lift: 2.1 }, { url: "b", lift: 1.3 }, { url: "c", lift: 0.9 }, { url: "d", beat: 0.4, lift: 3 }] });
+  assert.deepEqual(s.posts.map((p) => p.url), ["a", "b"]);
+});
+
+t("the briefing never calls a tag seen in two posts 'most used'", () => {
+  const ctx = brandContext({ name: "Honest Glow", intel: { keywords: ["skincare"], platforms: ["instagram"] } }, {});
+  const few = composeBriefing({ platform: "instagram", ctx, trending: { platform: "instagram", hashtags: [{ tag: "beauty", posts: 2 }, { tag: "skincare", posts: 2 }] }, analysis: { summary: { n: 3, top: [] } } });
+  assert.ok(!few.moves.some((m) => /Most used/.test(m.text)), JSON.stringify(few.moves));
+  assert.equal(few.thin, true);
+  const many = composeBriefing({ platform: "instagram", ctx, trending: { platform: "instagram", hashtags: [{ tag: "skincare", posts: 9 }] }, analysis: { summary: { n: 30, top: [] } } });
+  assert.ok(many.moves.some((m) => /#skincare \(9 posts\)/.test(m.text)));
 });
 
 console.log(`\n${passed} logic checks passed`);

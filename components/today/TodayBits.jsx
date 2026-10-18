@@ -15,6 +15,7 @@ import { slimBrand } from "../../lib/api";
 import { PLANS } from "../../lib/account";
 import { STUDIO_TYPES } from "../../lib/studio/options";
 import { platformLabel } from "../../lib/intel/taxonomy";
+import { standouts } from "../../lib/intel/standouts";
 import { ago } from "../../lib/when";
 
 /* ------------------------------------------------------------- plan state -- */
@@ -112,6 +113,7 @@ export function Briefing({ brand, targets, studio }) {
   }
   if (!b || (!b.moves?.length && !b.ideas?.length)) return null;
   const from = (b.findingIds || []).slice(0, 12).join(",");
+  const shown = standouts(b);
 
   return (
     <section aria-labelledby="briefing" className="rounded-[24px] border border-line bg-surface p-5 sm:p-7">
@@ -124,7 +126,11 @@ export function Briefing({ brand, targets, studio }) {
           {b.sample ? <Badge tone="mist">Sample data</Badge> : null}
         </span>
       </div>
-      {b.posts ? <p className="mt-1 text-[13px] text-muted">From {b.posts} posts in your niche in the last 7 days. Free, every week.</p> : null}
+      {b.posts ? (
+        <p className="mt-1 text-[13px] text-muted">
+          From {b.posts} posts in your niche in the last 7 days{shown.thin ? ", an early read" : ""}. Free, every week.
+        </p>
+      ) : null}
       <div className="mt-5 grid gap-6 lg:grid-cols-2">
         {b.moves?.length ? (
           <div>
@@ -161,7 +167,7 @@ export function Briefing({ brand, targets, studio }) {
           </div>
         ) : null}
       </div>
-      <EvidenceStrip posts={b.evidence} title="Standouts this week" className="mt-6" />
+      <EvidenceStrip posts={shown.posts} title={shown.title} className="mt-6" />
     </section>
   );
 }
