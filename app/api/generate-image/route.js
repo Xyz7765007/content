@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAccess } from "../../../lib/ai/access";
+import { requireAdmin } from "../../../lib/admin";
 import { errorJson } from "../../../lib/ai/errors";
 
 export const maxDuration = 60;
@@ -8,7 +8,8 @@ export const maxDuration = 60;
 // deployment. The app renders in the browser with the key from Profile.
 export async function POST(req) {
   try {
-    await requireAccess();
+    // No screen uses this any more; only the owner can reach it.
+    await requireAdmin();
   } catch (err) {
     const { body, status } = errorJson(err);
     return NextResponse.json(body, { status });

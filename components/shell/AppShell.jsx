@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Binoculars, BookmarkSimple, Storefront, Sun } from "@phosphor-icons/react";
+import { CaretLeft, ChartLineUp, ChatCircleDots, PaintBrushBroad, Storefront, Sun } from "@phosphor-icons/react";
 import { SPRING, ToastHost, cx } from "../ui";
 import Wordmark from "./Wordmark";
 import Huesy from "../huesy/Huesy";
@@ -14,11 +14,16 @@ import StateSync from "../auth/StateSync";
 import { useSession } from "../auth/useSession";
 import { useRuns } from "../../lib/runner";
 import { useTitle } from "../../lib/useTitle";
+import { PlanMeter } from "../plan/PlanBits";
+import { useAccount } from "../../lib/account";
 
+// Five places, the same on every width. Insights also holds the watchlists
+// and saved signals, so those pages light it up too.
 const NAV = [
   { href: "/home", label: "Today", icon: Sun },
-  { href: "/search", label: "Watching", icon: Binoculars },
-  { href: "/saved", label: "Saved", icon: BookmarkSimple },
+  { href: "/ask", label: "Ask", icon: ChatCircleDots },
+  { href: "/insights", label: "Insights", icon: ChartLineUp, also: ["/search", "/saved"] },
+  { href: "/studio", label: "Studio", icon: PaintBrushBroad, also: ["/compose"] },
   { href: "/profile", label: "Brand", icon: Storefront },
 ];
 
@@ -32,7 +37,11 @@ export { useTitle };
 export default function AppShell({ children, title, docTitle, actions, wide = false, back }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isActive = (href) => pathname === href || pathname.startsWith(`${href}/`);
+  const under = (href) => pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href) => {
+    const item = NAV.find((n) => n.href === href);
+    return under(href) || Boolean(item?.also?.some(under));
+  };
   useTitle(docTitle || (typeof title === "string" ? title : null));
 
   // The runner and toasts ask for navigation through this event.
@@ -77,6 +86,7 @@ export default function AppShell({ children, title, docTitle, actions, wide = fa
         <RunPill className="mt-6" />
 
         <div className="mt-auto flex flex-col gap-2 px-2">
+          <PlanMeter className="mb-1" />
           <Account />
           <ThemeSwitch className="mb-1 self-start" />
           <Link href="/" className="text-[13px] text-faint transition-colors hover:text-ink">
@@ -94,7 +104,16 @@ export default function AppShell({ children, title, docTitle, actions, wide = fa
             )}
           >
             <div className="flex min-w-0 items-center gap-3">
-              <span className="lg:hidden">
+              {back ? (
+                <Link
+                  href={back.href}
+                  aria-label={`Back to ${back.label}`}
+                  className="-ml-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-sunken hover:text-ink sm:hidden"
+                >
+                  <CaretLeft size={18} weight="bold" />
+                </Link>
+              ) : null}
+              <span className={cx("lg:hidden", back && "max-sm:hidden")}>
                 <Wordmark href="/home" compact />
               </span>
               {back ? (
@@ -108,7 +127,10 @@ export default function AppShell({ children, title, docTitle, actions, wide = fa
               ) : null}
               <h1 className="font-display truncate text-[20px] text-ink sm:text-[21px]">{title}</h1>
             </div>
-            {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+            <div className="flex shrink-0 items-center gap-2">
+              <PlanMeter compact className="lg:hidden" />
+              {actions}
+            </div>
           </div>
           <RunPill className="mx-4 mb-2.5 lg:hidden" />
         </header>
@@ -155,11 +177,19 @@ export default function AppShell({ children, title, docTitle, actions, wide = fa
 
 function Account() {
   const { user, configured } = useSession();
+  const admin = useAccount((s) => s.account?.admin);
   if (!configured) return null;
   return (
     <div className="mb-2 rounded-2xl border border-line bg-surface p-3">
       {user?.email ? <p className="truncate text-[12.5px] text-muted">{user.email}</p> : null}
-      <LogoutButton className="-ml-2 mt-1" />
+      <div className="-ml-2 mt-1 flex items-center gap-1">
+        <LogoutButton />
+        {admin ? (
+          <Link href="/admin" className="rounded-full px-2.5 py-1.5 text-[12.5px] text-muted transition-colors hover:bg-sunken hover:text-ink">
+            Admin
+          </Link>
+        ) : null}
+      </div>
     </div>
   );
 }

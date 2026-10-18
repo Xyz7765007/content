@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Binoculars, Lightning, PencilSimple, Plus, TrashSimple } from "@phosphor-icons/react";
 import { AnimatePresence } from "motion/react";
 import AppShell from "../../components/shell/AppShell";
+import InsightsNav from "../../components/insights/InsightsNav";
+import { CostTag } from "../../components/plan/PlanBits";
+import { PRICES } from "../../lib/account";
 import { Appear, Badge, Button, Card, EmptyState, IconButton, toast } from "../../components/ui";
 import { useHydrated, useStore } from "../../lib/store";
 import { isGlobal, normaliseRegions, researchPlatformById } from "../../lib/constants";
@@ -26,7 +29,7 @@ export default function WatchingPage() {
 
   return (
     <AppShell
-      title="Watching"
+      title="Watchlists"
       actions={
         <Button as={Link} href="/search/new" size="sm">
           <Plus size={14} weight="bold" />
@@ -34,6 +37,7 @@ export default function WatchingPage() {
         </Button>
       }
     >
+      <InsightsNav />
       {!hydrated ? (
         <div className="space-y-3">
           <div className="skeleton h-28 rounded-[20px]" />
@@ -79,7 +83,7 @@ export default function WatchingPage() {
                         </Badge>
                       </div>
                       <p className="mt-1 text-[13px] text-muted">
-                        {[what, platforms.join(", "), isGlobal(regions) ? "anywhere" : regions.join(", ")].filter(Boolean).join(" · ")}
+                        {[what, platforms.join(", "), isGlobal(regions) ? "anywhere" : regions.join(", ")].filter(Boolean).join("; ")}
                       </p>
                       <p className={old ? "mt-1 text-[12.5px] text-accent-deep" : "mt-1 text-[12.5px] text-faint"}>
                         {running
@@ -87,10 +91,11 @@ export default function WatchingPage() {
                           : `${checkedLine(s.lastRunAt)}${old && s.lastRunAt ? ". Worth a fresh look." : ""}`}
                       </p>
                     </div>
-                    <div className="flex w-full items-center gap-1.5 sm:w-auto">
-                      <Button size="sm" variant="quiet" onClick={() => startRun(s.id)} disabled={running} loading={running}>
+                    <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto sm:flex-nowrap">
+                      <Button size="sm" variant="quiet" onClick={() => startRun(s.id)} disabled={running} loading={running} className="max-sm:w-full">
                         {!running ? <Lightning size={14} weight="fill" /> : null}
                         {running ? "Checking" : "Check now"}
+                        {!running ? <CostTag credits={PRICES.radar} /> : null}
                       </Button>
                       <Button as={Link} href={`/search/${s.id}`} size="sm" variant="quiet">
                         Open
@@ -112,7 +117,7 @@ export default function WatchingPage() {
           </AnimatePresence>
           <p className="mt-2 flex items-center gap-2 text-[13px] text-faint">
             <Binoculars size={14} />
-            Checking a watchlist runs a fresh search. New signals join the list, and the ones you have stay put.
+            Checking a watchlist runs a fresh search for {PRICES.radar} credits, given back if it finds nothing. New signals join the list, and the ones you have stay put.
           </p>
         </div>
       )}

@@ -275,7 +275,7 @@ export function Segmented({ options, value, onChange, className, itemClassName, 
     <div
       role="radiogroup"
       aria-label={label}
-      className={cx("inline-flex max-w-full items-center gap-0.5 rounded-full border border-line bg-sunken p-1", className)}
+      className={cx("inline-flex max-w-full items-center gap-0.5 self-start rounded-full border border-line bg-sunken p-1", className)}
     >
       {options.map((o) => {
         const on = value === o.id;
@@ -355,7 +355,7 @@ export function EmptyState({ mood = "sleepy", icon: Icon, title, body, action, c
   );
 }
 
-export function ErrorNote({ children, onRetry, action, className }) {
+export function ErrorNote({ children, onRetry, retryLabel = "Try again", action, className }) {
   return (
     <div
       role="alert"
@@ -369,7 +369,7 @@ export function ErrorNote({ children, onRetry, action, className }) {
       {action}
       {onRetry ? (
         <Button size="sm" variant="quiet" onClick={onRetry}>
-          Try again
+          {retryLabel}
         </Button>
       ) : null}
     </div>

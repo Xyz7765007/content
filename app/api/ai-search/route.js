@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireAccess } from "../../../lib/ai/access";
 import { errorJson, fail } from "../../../lib/ai/errors";
 import { runSearch } from "../../../lib/ai/run";
+import { refundCredits, requirePlan, spendCredits } from "../../../lib/billing/account";
+import { PRICES } from "../../../lib/plans";
 
 export const maxDuration = 300;
 
@@ -24,15 +26,28 @@ export async function POST(req) {
   }
 
   let user;
+  let balance = null;
+  let payer = null;
   try {
     ({ user } = await requireAccess());
+    const member = user || { id: "local", email: "local@huesy.dev" };
+    await requirePlan(member, "any");
+    // A radar check costs credits, refunded when it fails or finds nothing.
+    balance = await spendCredits(member, "radar");
+    payer = member;
   } catch (err) {
     const { body: b, status } = errorJson(err);
     return NextResponse.json(b, { status });
   }
 
+  const gone = new AbortController();
+  req.signal?.addEventListener?.("abort", () => gone.abort(), { once: true });
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
+    cancel() {
+      gone.abort();
+    },
     async start(controller) {
       const send = (event) => {
         try {
@@ -41,12 +56,33 @@ export async function POST(req) {
           /* the reader went away; the run stops at the next abort check */
         }
       };
+      // A check is free when it brings nothing back: it found nothing, it
+      // failed, or it was stopped before the first signal arrived.
+      let found = 0;
+      let signals = 0;
+      let finished = false;
       try {
-        await runSearch({ config: body?.config, brand: body?.brand, user, send, abort: req.signal });
+        const counted = (event) => {
+          if (event.t === "signal") signals += 1;
+          if (event.t === "done") {
+            found = event.count || 0;
+            finished = true;
+          }
+          send(event.t === "done" ? { ...event, credits: balance, charged: PRICES.radar } : event);
+        };
+        await runSearch({ config: body?.config, brand: body?.brand, user, send: counted, abort: gone.signal });
+        if ((finished ? !found : !signals) && payer) {
+          const back = await refundCredits(payer, PRICES.radar, finished ? "radar_empty" : "radar_stopped");
+          send({ t: "refund", credits: back ?? balance, reason: finished ? "empty" : "stopped" });
+        }
       } catch (err) {
-        if (req.signal?.aborted) return;
+        if (gone.signal.aborted) {
+          if (!signals && payer) await refundCredits(payer, PRICES.radar, "radar_stopped");
+          return;
+        }
         const { body: b } = errorJson(err);
-        send({ t: "error", ...b.error });
+        const back = payer ? await refundCredits(payer, PRICES.radar, "radar_failed") : null;
+        send({ t: "error", ...b.error, refunded: back != null, credits: back ?? balance });
       } finally {
         try {
           controller.close();

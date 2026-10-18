@@ -4,6 +4,9 @@ import { useCallback, useMemo, useState } from "react";
 import SignalSheet from "./SignalSheet";
 import { useSaving } from "./BoardPicker";
 import { useStore } from "../../lib/store";
+import { useAccount } from "../../lib/account";
+import { goTo } from "../../lib/runner";
+import { toast } from "../ui";
 
 /**
  * Everything a list of signals needs, in one place: open a signal, write
@@ -21,7 +24,16 @@ export function useSignalActions() {
   );
 
   const openSignal = useCallback((signal) => setActive({ signal, open: true, autoWrite: false }), []);
-  const writeSignal = useCallback((signal) => setActive({ signal, open: true, autoWrite: true }), []);
+  // Writing posts is part of Studio: on Intelligence, say so instead of
+  // starting a write that would only fail.
+  const writeSignal = useCallback((signal) => {
+    const account = useAccount.getState().account;
+    if (account && !account.studio) {
+      toast("Writing posts is part of Studio.", { action: { label: "See Studio", onClick: () => goTo("/plans") } });
+      return;
+    }
+    setActive({ signal, open: true, autoWrite: true });
+  }, []);
   const close = useCallback(() => setActive((a) => ({ ...a, open: false })), []);
   const draftCount = useCallback((signal) => Object.keys(drafts?.[signal.id] || {}).length, [drafts]);
 

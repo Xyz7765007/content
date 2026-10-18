@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { Check } from "@phosphor-icons/react";
 import AppShell from "../../components/shell/AppShell";
@@ -10,18 +12,38 @@ import LogoutButton from "../../components/auth/LogoutButton";
 import ThemeSwitch from "../../components/ThemeSwitch";
 import { useSession } from "../../components/auth/useSession";
 import { useHydrated, useStore } from "../../lib/store";
+import IntelForm from "../../components/brand/IntelForm";
+import { Badge, Button } from "../../components/ui";
+import { PLANS, formatCredits, resetDate, useAccountData } from "../../lib/account";
+import { getJson } from "../../lib/stream";
+import { STUDIO_TYPES } from "../../lib/studio/options";
 
 const TABS = [
   { id: "brand", label: "Brand" },
+  { id: "market", label: "Market" },
   { id: "tone", label: "Platforms and tone" },
   { id: "examples", label: "Examples" },
-  { id: "watch", label: "What I watch" },
-  { id: "account", label: "Account" },
+  { id: "watch", label: "Watchlists" },
+  { id: "account", label: "Plan and account" },
 ];
 
 export default function BrandPage() {
+  return (
+    <Suspense fallback={null}>
+      <Brand />
+    </Suspense>
+  );
+}
+
+function Brand() {
   const hydrated = useHydrated();
-  const [tab, setTab] = useState("brand");
+  const params = useSearchParams();
+  const [tab, setTab] = useState(TABS.some((t) => t.id === params.get("tab")) ? params.get("tab") : "brand");
+  // A link to a tab (for example "Credit history") works from this page too.
+  const wanted = params.get("tab");
+  useEffect(() => {
+    if (TABS.some((t) => t.id === wanted)) setTab(wanted);
+  }, [wanted]);
   const brand = useStore((s) => s.brand);
   const setBrand = useStore((s) => s.setBrand);
   const targets = useStore((s) => s.targets);
@@ -76,6 +98,14 @@ export default function BrandPage() {
           <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={SPRING}>
             <Card className="p-5 sm:p-8">
               {tab === "brand" ? <BrandInfoForm brand={brand} setBrand={setBrand} /> : null}
+              {tab === "market" ? (
+                <>
+                  <p className="mb-6 max-w-[62ch] text-sm text-muted">
+                    This is what every answer, report and piece of content is researched against. The clearer it is, the sharper they get.
+                  </p>
+                  <IntelForm brand={brand} setBrand={setBrand} />
+                </>
+              ) : null}
               {tab === "tone" ? <PlatformPersonalityForm brand={brand} setBrand={setBrand} /> : null}
               {tab === "examples" ? <ReferencesForm brand={brand} setBrand={setBrand} /> : null}
               {tab === "watch" ? (
@@ -124,10 +154,84 @@ function SavedHint({ at }) {
   );
 }
 
+function PlanSection() {
+  const { account } = useAccountData();
+  const [history, setHistory] = useState(null);
+  useEffect(() => {
+    if (account?.plan) getJson("/api/account?history=1").then((r) => setHistory(r.error ? "error" : r.history || []));
+  }, [account?.plan, account?.credits]);
+  if (!account) return <div className="skeleton h-40 rounded-[20px]" />;
+  if (!account.plan) {
+    return (
+      <section>
+        <SectionTitle sub="Asking, reports and Studio open with a plan. Everything you've set up stays.">Plan</SectionTitle>
+        <Button as={Link} href="/plans">
+          See plans
+        </Button>
+      </section>
+    );
+  }
+  return (
+    <section className="flex flex-col gap-5">
+      <SectionTitle sub={`${PLANS[account.plan].name}, $${PLANS[account.plan].price} a month. Credits reset on ${resetDate(account)}.`}>Plan and credits</SectionTitle>
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="rounded-2xl bg-sunken p-3.5">
+          <dt className="meta">Credits left</dt>
+          <dd className="font-display tabular mt-1 text-[24px] leading-none">{formatCredits(account.credits)}</dd>
+        </div>
+        {account.allowances
+          ? Object.entries(account.allowances).map(([k, a]) => (
+              <div key={k} className="rounded-2xl bg-sunken p-3.5">
+                <dt className="meta">{STUDIO_TYPES[k].plural} left</dt>
+                <dd className="font-display tabular mt-1 text-[24px] leading-none">
+                  {a.left}
+                  <span className="text-[14px] text-muted"> of {a.limit}</span>
+                </dd>
+              </div>
+            ))
+          : null}
+      </dl>
+      <div className="flex flex-wrap gap-2">
+        <Button as={Link} href="/plans" size="sm" variant="quiet">
+          {account.studio ? "Plans" : "See Studio"}
+        </Button>
+      </div>
+      <div>
+        <h3 className="mb-2 text-[13px] font-medium">This month's credits</h3>
+        {history === null ? (
+          <div className="skeleton h-24 rounded-2xl" />
+        ) : history === "error" ? (
+          <p className="text-[13.5px] text-danger">I couldn't load the history. Reload the page to try again.</p>
+        ) : !history.length ? (
+          <p className="text-[13.5px] text-muted">Nothing spent yet this month.</p>
+        ) : (
+          <ul className="flex flex-col">
+            {history.map((h) => (
+              <li key={h.id} className="flex items-center justify-between gap-3 border-b border-line py-2 text-[13.5px] last:border-0">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate">{h.label}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-4">
+                  <span className={h.delta >= 0 ? "tabular font-medium text-good" : "tabular font-medium"}>
+                    {h.delta >= 0 ? "+" : ""}
+                    {formatCredits(h.delta)}
+                  </span>
+                  <span className="hidden w-24 text-right text-[12px] text-faint sm:inline">{new Date(h.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Account({ settings, setSettings }) {
   const { user, configured } = useSession();
   return (
     <div className="flex flex-col gap-9">
+      <PlanSection />
       <section>
         <SectionTitle
           sub={
@@ -148,21 +252,7 @@ function Account({ settings, setSettings }) {
         <ThemeSwitch labels />
       </section>
 
-      <section>
-        <SectionTitle sub="Optional. With a Google AI Studio key, Huesy can turn an Instagram image prompt into the picture itself. The key stays on this device and is never sent to Huesy.">
-          Image rendering
-        </SectionTitle>
-        <Field label="Google AI Studio key" htmlFor="googleKey" hint="From aistudio.google.com/apikey">
-          <Input
-            id="googleKey"
-            type="password"
-            autoComplete="off"
-            value={settings.googleKey || ""}
-            onChange={(e) => setSettings({ googleKey: e.target.value })}
-            placeholder="Paste the key"
-          />
-        </Field>
-      </section>
+
     </div>
   );
 }

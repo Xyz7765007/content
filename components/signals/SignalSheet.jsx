@@ -181,6 +181,7 @@ export default function SignalSheet({ signal, open, onClose, autoWrite = false, 
                 brand={brand}
                 state={state}
                 error={job?.error}
+                errorCode={job?.code}
                 onRetry={() => write(signal, [p], options)}
                 onSave={({ text }) => onSavePost?.({ signal, platform: p, text, label: PLATFORM_META[p].label })}
               />

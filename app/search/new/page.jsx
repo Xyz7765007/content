@@ -29,6 +29,8 @@ import {
   normaliseRegions,
 } from "../../../lib/constants";
 import { quickJob } from "../../../lib/api";
+import { CostTag } from "../../../components/plan/PlanBits";
+import { PRICES, useAccountData } from "../../../lib/account";
 import { startRun } from "../../../lib/runner";
 import { useHydrated, useStore } from "../../../lib/store";
 
@@ -71,6 +73,7 @@ export default function BuilderPage() {
 
 function Builder() {
   const router = useRouter();
+  const { account } = useAccountData();
   const params = useSearchParams();
   const editId = params.get("edit");
   const hydrated = useHydrated();
@@ -117,7 +120,7 @@ function Builder() {
 
   if (!hydrated || !cfg) {
     return (
-      <AppShell title={editId ? "Edit watchlist" : "New watchlist"} back={{ href: "/search", label: "Watching" }}>
+      <AppShell title={editId ? "Edit watchlist" : "New watchlist"} back={{ href: "/search", label: "Watchlists" }}>
         <div className="space-y-4">
           <div className="skeleton h-40 rounded-[20px]" />
           <div className="skeleton h-64 rounded-[20px]" />
@@ -162,12 +165,13 @@ function Builder() {
       return;
     }
     const id = saveSearch(config, []);
-    startRun(id);
+    if (runNow) startRun(id);
+    else toast("Saved. Check it whenever you like.", { tone: "good" });
     router.push(`/search/${id}`);
   };
 
   return (
-    <AppShell title={editing ? "Edit watchlist" : "New watchlist"} back={{ href: "/search", label: "Watching" }}>
+    <AppShell title={editing ? "Edit watchlist" : "New watchlist"} back={{ href: "/search", label: "Watchlists" }}>
       <div className="mx-auto flex max-w-[760px] flex-col gap-5 pb-36">
         <div className="flex items-center gap-3.5">
           <Huesy mood="idle" size={44} />
@@ -335,15 +339,16 @@ function Builder() {
             <Button as={Link} href={editing ? `/search/${editing.id}` : "/search"} variant="ghost" size="sm">
               Cancel
             </Button>
-            {editing ? (
-              <Button variant="quiet" size="md" onClick={() => submit(false)} disabled={!ready}>
-                Save
+            <Button variant="quiet" size="md" onClick={() => submit(false)} disabled={!ready}>
+              {editing ? "Save" : "Save without checking"}
+            </Button>
+            {account?.plan ? (
+              <Button onClick={() => submit(true)} disabled={!ready}>
+                <Binoculars size={15} />
+                {editing ? "Save and check" : "Start watching"}
+                <CostTag credits={PRICES.radar} />
               </Button>
             ) : null}
-            <Button onClick={() => submit(true)} disabled={!ready}>
-              <Binoculars size={15} />
-              {editing ? "Save and check" : "Start watching"}
-            </Button>
           </div>
         </div>
       </div>

@@ -13,6 +13,8 @@ import { useSignalActions } from "../../../components/signals/useSignalActions";
 import { Appear, Button, EmptyState, SPRING, SignalSkeleton, toast } from "../../../components/ui";
 import { useHydrated, useStore } from "../../../lib/store";
 import { startRun, useRuns } from "../../../lib/runner";
+import { CostTag } from "../../../components/plan/PlanBits";
+import { PRICES } from "../../../lib/account";
 import { checkedLine, exportSignalsCSV } from "../../../lib/parse";
 
 const BATCH_CAP = 10;
@@ -48,7 +50,7 @@ export default function WatchlistPage() {
 
   if (!hydrated) {
     return (
-      <AppShell title="Watchlist" back={{ href: "/search", label: "Watching" }}>
+      <AppShell title="Watchlist" back={{ href: "/search", label: "Watchlists" }}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SignalSkeleton />
           <SignalSkeleton />
@@ -60,14 +62,14 @@ export default function WatchlistPage() {
 
   if (!search) {
     return (
-      <AppShell title="Watchlist" back={{ href: "/search", label: "Watching" }}>
+      <AppShell title="Watchlist" back={{ href: "/search", label: "Watchlists" }}>
         <EmptyState
           mood="oops"
           title="I can’t find that watchlist"
           body="It may have been deleted, or it lives in another account."
           action={
             <Button as={Link} href="/search">
-              Back to Watching
+              Back to watchlists
             </Button>
           }
         />
@@ -97,7 +99,7 @@ export default function WatchlistPage() {
     <AppShell
       title={search.name}
       docTitle={search.name}
-      back={{ href: "/search", label: "Watching" }}
+      back={{ href: "/search", label: "Watchlists" }}
       actions={
         <>
           <Button
@@ -112,6 +114,7 @@ export default function WatchlistPage() {
           <Button size="sm" onClick={() => startRun(id)} disabled={running} loading={running}>
             {!running ? <Lightning size={14} weight="fill" /> : null}
             {running ? "Checking" : "Check now"}
+            {!running ? <CostTag credits={PRICES.radar} /> : null}
           </Button>
         </>
       }
@@ -193,11 +196,12 @@ export default function WatchlistPage() {
           <EmptyState
             mood="sleepy"
             title="Nothing here yet"
-            body="Check now and I'll look across Google News, Instagram and X."
+            body={`Check now and I'll look across Google News, Instagram and X. It's ${PRICES.radar} credits, given back if I find nothing.`}
             action={
               <Button onClick={() => startRun(id)}>
                 <Lightning size={15} weight="fill" />
                 Check now
+                <CostTag credits={PRICES.radar} />
               </Button>
             }
           />

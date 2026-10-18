@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Check, Copy, FolderSimple, FolderSimpleDashed, PencilSimple, Plus, TrashSimple } from "@phosphor-icons/react";
 import AppShell from "../../components/shell/AppShell";
+import InsightsNav from "../../components/insights/InsightsNav";
 import SignalCard from "../../components/signals/SignalCard";
 import { useSignalActions } from "../../components/signals/useSignalActions";
 import { PLATFORM_META } from "../../components/compose/PostCard";
@@ -71,6 +72,7 @@ export default function SavedPage() {
   if (!hydrated) {
     return (
       <AppShell title="Saved">
+        <InsightsNav />
         <div className="skeleton h-64 rounded-[20px]" />
       </AppShell>
     );
@@ -86,7 +88,8 @@ export default function SavedPage() {
         </Button>
       }
     >
-      <div className="flex flex-col gap-6">
+      <InsightsNav className="mb-0" />
+      <div className="mt-6 flex flex-col gap-6">
         <div className="no-scrollbar -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1">
           <Chip selected={view === ALL} onClick={() => setView(ALL)} className="shrink-0">
             All saved <span className="tabular opacity-60">{saves.length}</span>

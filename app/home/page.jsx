@@ -16,6 +16,10 @@ import { collectSignals, useHydrated, useStore } from "../../lib/store";
 import { checkAll, startRun, useRuns } from "../../lib/runner";
 import { checkedLine, daysSince } from "../../lib/parse";
 import { SAMPLE_SIGNALS } from "../../lib/sample";
+import { useAccountData, PRICES } from "../../lib/account";
+import { CostTag } from "../../components/plan/PlanBits";
+import { NewReportSheet } from "../../components/insights/NewReport";
+import { Briefing, Continue, FirstPlaybook, PlanNotice, QuickActions } from "../../components/today/TodayBits";
 
 const greet = () => {
   const h = new Date().getHours();
@@ -31,7 +35,10 @@ export default function TodayPage() {
   const markSeen = useStore((s) => s.markSeen);
   const runs = useRuns((s) => s.runs);
   const actions = useSignalActions();
+  const targets = useStore((s) => s.targets);
   const [filters, setFilters] = useState({ sort: "fit" });
+  const { account } = useAccountData();
+  const [report, setReport] = useState(null);
 
   // "New" means new since the last visit, fixed for this visit, and the visit
   // is marked seen on the way out.
@@ -76,16 +83,20 @@ export default function TodayPage() {
   const recentRun = Object.values(runs).sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0];
   const stale = searches.length > 0 && daysSince(lastRun) > 1;
 
-  const checkButton = searches.length ? (
+  // Check now runs every watchlist not checked in the last hour, or the
+  // newest one, so the price says how many that is.
+  const toCheck = Math.max(1, searches.filter((x) => Date.now() - (x.lastRunAt || 0) > 3600000).length);
+  const checkButton = searches.length && account?.plan ? (
     <Button size="sm" onClick={() => checkAll()} disabled={Boolean(running)} loading={Boolean(running)}>
       {!running ? <Lightning size={14} weight="fill" /> : null}
-      {running ? "Checking" : "Check now"}
+      {running ? "Checking" : toCheck > 1 ? `Check ${toCheck} watchlists` : "Check watchlists"}
+      {!running ? <CostTag credits={PRICES.radar * toCheck} /> : null}
     </Button>
   ) : null;
   const panelRun = recentRun && recentRun.phase !== "done" ? recentRun : null;
 
   return (
-    <AppShell title="Today" actions={checkButton}>
+    <AppShell title="Today">
       {!hydrated ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SignalSkeleton />
@@ -94,49 +105,57 @@ export default function TodayPage() {
         </div>
       ) : !onboarded ? (
         <Welcome />
-      ) : !searches.length ? (
-        <FirstWatch />
       ) : (
         <div className="flex flex-col gap-9">
           <section className="flex items-center gap-4">
-            {!panelRun ? <Huesy mood={newCount ? "found" : "idle"} size={52} /> : null}
+            {!panelRun ? <Huesy mood={newCount ? "found" : "idle"} size={52} className={account?.welcomeReport ? "max-sm:hidden" : undefined} /> : null}
             <div className="min-w-0">
               <h2 className="display-lg text-[26px] sm:text-[30px]">
                 {greet()}
                 {brand.brandName ? `, ${brand.brandName}` : ""}.
               </h2>
-              <p className="mt-1 text-[14.5px] text-muted">
-                {running
-                  ? "I'm checking now. New signals will appear below as I find them."
-                  : newCount
-                    ? `${newCount} new since your last visit. ${checkedLine(lastRun)}.`
-                    : `${checkedLine(lastRun)}.`}
-                {stale && !running ? (
-                  <>
-                    {" "}
-                    <button
-                      type="button"
-                      onClick={() => checkAll()}
-                      className="font-medium text-accent-deep underline decoration-accent-line underline-offset-2"
-                    >
-                      Check again
-                    </button>
-                  </>
-                ) : null}
-              </p>
+              <p className="mt-1 text-[14.5px] text-muted">{todayLine({ account, running, newCount, lastRun, searches })}</p>
             </div>
+          </section>
+
+          <PlanNotice account={account} />
+          {account?.plan && account.welcomeReport ? <FirstPlaybook platform={brand.intel?.platforms?.[0]} onRun={() => setReport("playbook")} /> : null}
+          {account?.plan ? <Briefing brand={brand} targets={targets} studio={account.studio} /> : null}
+          {account?.plan ? <Continue account={account} /> : null}
+          {account?.plan ? <QuickActions account={account} onReport={() => setReport("trends")} /> : null}
+
+          <FinishBrand brand={brand} />
+
+          {!searches.length ? (
+            <FirstWatch />
+          ) : (
+          <>
+          <section className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-display text-[22px]">From your watchlists</h2>
+              {checkButton}
+            </div>
+            <p className="text-[13.5px] text-muted">
+              {running ? "I'm checking now. New signals appear below as I find them." : `${checkedLine(lastRun)}.`}
+              {stale && !running && account?.plan ? (
+                <>
+                  {" "}
+                  <button type="button" onClick={() => checkAll()} className="font-medium text-accent-deep underline decoration-accent-line underline-offset-2">
+                    Check again
+                  </button>
+                </>
+              ) : null}
+            </p>
           </section>
 
           <AnimatePresence initial={false}>
             {panelRun ? <RunPanel key={panelRun.searchId} searchId={panelRun.searchId} /> : null}
           </AnimatePresence>
 
-          <FinishBrand brand={brand} />
-
           {best.length ? (
             <section>
               <div className="mb-4 flex items-baseline justify-between gap-4">
-                <h2 className="font-display text-[22px]">Best for {brand.brandName || "you"}</h2>
+                <h3 className="font-display text-[19px]">Best for {brand.brandName || "you"}</h3>
                 <span className="meta hidden sm:inline">Ranked for your brand</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -160,7 +179,7 @@ export default function TodayPage() {
           ) : null}
 
           <section>
-            <h2 className="font-display mb-4 text-[22px]">{best.length ? "Everything else" : "Everything you’re watching"}</h2>
+            <h3 className="font-display mb-4 text-[19px]">{best.length ? "Everything else" : "Everything you’re watching"}</h3>
             <SignalToolbar
               filters={filters}
               onChange={setFilters}
@@ -197,7 +216,7 @@ export default function TodayPage() {
                     </Button>
                   ) : (
                     <Button as={Link} href="/search" variant="quiet">
-                      Open Watching
+                      Open watchlists
                     </Button>
                   )
                 }
@@ -223,11 +242,28 @@ export default function TodayPage() {
               </div>
             )}
           </section>
+          </>
+          )}
         </div>
       )}
       {actions.ui}
+      <NewReportSheet kind={report} onClose={() => setReport(null)} />
     </AppShell>
   );
+}
+
+// One line under the greeting: what changed, in plain words.
+function todayLine({ account, running, newCount, lastRun, searches }) {
+  if (running) return "I'm checking your watchlists now.";
+  const parts = [];
+  if (account?.plan) parts.push(`${(account.credits ?? 0).toLocaleString("en-US")} credits left this month`);
+  if (account?.allowances) {
+    const a = account.allowances;
+    parts.push(`${a.creative.left} creatives, ${a.carousel.left} carousels and ${a.reel.left} reels to make`);
+  }
+  if (newCount) parts.push(`${newCount} new signals since your last visit`);
+  if (!parts.length) return searches.length ? `${checkedLine(lastRun)}.` : "Here's where everything starts.";
+  return `${parts.join(". ")}.`;
 }
 
 function Welcome() {
@@ -236,9 +272,10 @@ function Welcome() {
       <Card className="aurora grain relative overflow-hidden p-7 sm:p-10">
         <Huesy mood="idle" size={72} />
         <h2 className="display-lg mt-5 max-w-[22ch] text-[28px] sm:text-[34px]">Hi, I’m Huesy.</h2>
-        <p className="mt-3 max-w-[54ch] text-[15.5px] leading-relaxed text-muted">
-          Tell me what to watch, and whenever you check, I'll bring back the launches, collabs and campaigns worth
-          posting about, ranked for your brand, with the post drafted in your voice. Setup takes about a minute.
+        <p className="mt-3 max-w-[56ch] text-[15.5px] leading-relaxed text-muted">
+          I read what's working in your market right now: the trends, the openings, the competitors and what your
+          audience asks. Then I help you make content built on it. Tell me about your brand first; it takes about a
+          minute.
         </p>
         <Button as={Link} href="/onboarding" size="lg" className="mt-7">
           Set up my brand
@@ -247,8 +284,8 @@ function Welcome() {
       </Card>
 
       <section>
-        <h2 className="font-display mb-1 text-[20px]">What a morning looks like</h2>
-        <p className="mb-4 text-[13.5px] text-muted">Sample signals from invented brands, until your own arrive.</p>
+        <h2 className="font-display mb-1 text-[20px]">Brand moves, too</h2>
+        <p className="mb-4 text-[13.5px] text-muted">Watchlists bring back launches and collabs worth posting about. These are samples from invented brands.</p>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {SAMPLE_SIGNALS.map((s) => (
             <SignalCard key={s.id} signal={s} preview />
@@ -266,6 +303,7 @@ function FirstWatch() {
   const targets = useStore((s) => s.targets);
   const draft = useStore((s) => s.draft);
   const saveSearch = useStore((s) => s.saveSearch);
+  const { account } = useAccountData();
   const what =
     targets.targetMode === "accounts"
       ? `${String(targets.accountList || "").split(/\n|,/).filter((a) => a.trim()).length} brands`
@@ -279,25 +317,28 @@ function FirstWatch() {
   };
 
   return (
-    <EmptyState
-      mood="idle"
-      title={what ? `Shall I start watching ${what}?` : "What should I watch?"}
-      body="I'll check Google News, Instagram and X for launches, collabs and campaigns, and rank what I find for your brand."
-      action={
-        <>
-          {what ? (
-            <Button onClick={start}>
-              <Binoculars size={15} />
-              Start watching
-            </Button>
-          ) : null}
-          <Button as={Link} href="/search/new" variant={what ? "quiet" : "primary"}>
-            <Plus size={15} weight="bold" />
-            {what ? "Choose something else" : "Choose what to watch"}
+    <section className="flex flex-col gap-4 rounded-[24px] border border-dashed border-line-strong bg-surface p-5 sm:flex-row sm:items-center sm:p-6">
+      <Huesy mood="idle" size={44} />
+      <div className="min-w-0 flex-1">
+        <h2 className="font-display text-[19px] leading-snug">{what ? `Shall I watch ${what} for brand moves?` : "Watch your market for brand moves"}</h2>
+        <p className="mt-1 text-[13.5px] leading-relaxed text-muted">
+          A watchlist checks Google News, Instagram and X for launches, collabs and campaigns worth posting about, ranked for your brand.
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {what && account?.plan ? (
+          <Button onClick={start} size="sm">
+            <Binoculars size={15} />
+            Start watching
+            <CostTag credits={PRICES.radar} />
           </Button>
-        </>
-      }
-    />
+        ) : null}
+        <Button as={Link} href="/search/new" size="sm" variant="quiet">
+          <Plus size={14} weight="bold" />
+          {what && account?.plan ? "Something else" : "Set up a watchlist"}
+        </Button>
+      </div>
+    </section>
   );
 }
 

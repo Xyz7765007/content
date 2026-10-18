@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
@@ -105,7 +106,7 @@ function EditableText({ value, onChange, label }) {
   );
 }
 
-export default function PostCard({ signal, platform, brand, state = "done", error, onRetry, onSave, className }) {
+export default function PostCard({ signal, platform, brand, state = "done", error, errorCode, onRetry, onSave, className }) {
   const reduced = useReducedMotion();
   const draft = useStore((s) => s.drafts?.[signal?.id]?.[platform]);
   const setDraftPost = useStore((s) => s.setDraftPost);
@@ -259,7 +260,11 @@ export default function PostCard({ signal, platform, brand, state = "done", erro
         ) : state === "error" ? (
           <div className="flex flex-wrap items-center gap-3" role="alert">
             <p className="min-w-0 flex-1 text-[14px] text-danger">{error || "I couldn't write this one."}</p>
-            {onRetry ? (
+            {errorCode === "studio_only" || errorCode === "no_plan" ? (
+              <Button as={Link} href="/plans" size="sm" variant="quiet">
+                See Studio
+              </Button>
+            ) : onRetry && errorCode !== "text_fair_use" ? (
               <Button size="sm" variant="quiet" onClick={onRetry}>
                 Try again
               </Button>
@@ -328,7 +333,7 @@ function CreativeRender({ prompt, signal }) {
     return (
       <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-muted">
         <ImageSquare size={14} />
-        Copy this into your image tool. Image rendering inside Huesy is coming.
+        Copy this into your image tool, or make it as a creative in Studio.
       </p>
     );
   }

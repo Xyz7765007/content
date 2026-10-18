@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { accessMode, isAllowedEmail } from "./lib/access-rules";
 
-const APP = ["/home", "/search", "/compose", "/saved", "/profile"];
+const APP = ["/home", "/search", "/compose", "/saved", "/profile", "/ask", "/insights", "/studio", "/plans", "/admin"];
 
 // While Huesy is a waitlist, brand setup sits behind sign in too: the public
 // site only collects places on the list. Open mode restores the original

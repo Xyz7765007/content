@@ -169,6 +169,7 @@ export default function ComposePage() {
                         brand={brand}
                         state={state}
                         error={job?.error}
+                errorCode={job?.code}
                         onRetry={() => write(s, [p])}
                         onSave={({ text }) => savePost({ signal: s, platform: p, text, label: PLATFORM_META[p].label })}
                       />

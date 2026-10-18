@@ -6,6 +6,7 @@ import { SignOut } from "@phosphor-icons/react";
 import { Button } from "../ui";
 import { useSession } from "./useSession";
 import { useStore } from "../../lib/store";
+import { useAccount } from "../../lib/account";
 
 // Signing out also clears this browser's copy of the brand, watchlists and
 // drafts. They are safe in the account, and the next person to use this
@@ -25,6 +26,7 @@ export default function LogoutButton({ variant = "ghost", className, size = "sm"
         setBusy(true);
         await signOut();
         useStore.getState().resetLocal();
+        useAccount.setState({ account: null, error: null, loadedAt: 0 });
         router.push("/");
         router.refresh();
       }}

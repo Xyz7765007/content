@@ -3,22 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, ArrowRight, Binoculars, PencilSimpleLine, Sparkle } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, PencilSimpleLine, Sparkle } from "@phosphor-icons/react";
 import { Badge, Button, Card, ErrorNote, Field, Input, SPRING, Textarea, ToastHost } from "../../components/ui";
 import Huesy from "../../components/huesy/Huesy";
 import Wordmark from "../../components/shell/Wordmark";
 import { useTitle } from "../../components/shell/AppShell";
-import { BrandInfoForm, PlatformPersonalityForm, TargetsForm } from "../../components/brand/forms";
-import { useHydrated, useStore } from "../../lib/store";
+import { BrandInfoForm, PlatformPersonalityForm } from "../../components/brand/forms";
+import { intelFrom, useHydrated, useStore } from "../../lib/store";
+import IntelForm from "../../components/brand/IntelForm";
+import { useAccountData } from "../../lib/account";
 import { useSession } from "../../components/auth/useSession";
 import { quickJob } from "../../lib/api";
-import { startRun } from "../../lib/runner";
+
 
 /**
  * Setup in about a minute. A name and one sentence; Huesy drafts the rest
- * (voice, audience, the market and the brands to watch, a tone for each
- * platform); the person checks the draft in one place; finishing starts the
- * first search, so setup never ends on an empty screen.
+ * (voice, audience, the market, the search words and competitors, a tone
+ * for each platform); the person checks the draft in one place. Finishing
+ * spends nothing: it lands on Today, where the first playbook is free, or on
+ * the plans when there isn't one yet.
  */
 export default function OnboardingPage() {
   const router = useRouter();
@@ -30,10 +33,9 @@ export default function OnboardingPage() {
   const setBrand = useStore((s) => s.setBrand);
   const targets = useStore((s) => s.targets);
   const setTargets = useStore((s) => s.setTargets);
-  const draft = useStore((s) => s.draft);
   const completeOnboarding = useStore((s) => s.completeOnboarding);
-  const saveSearch = useStore((s) => s.saveSearch);
   const { user, configured } = useSession();
+  const { account } = useAccountData();
 
   const [step, setStep] = useState("intro"); // intro | drafting | review
   const [oneLiner, setOneLiner] = useState("");
@@ -74,28 +76,70 @@ export default function OnboardingPage() {
       subNiches: t.subNiches || d.subNiches || "",
       accountList: t.accountList || (d.accounts || []).join("\n"),
     }));
+    // Seed the market research settings from the draft, without overwriting
+    // anything already chosen.
+    setBrand((b) => {
+      const seeded = intelFrom(b, { accountList: (d.accounts || []).join("\n") });
+      const words = [d.niche, ...String(d.subNiches || "").split(",")].map((w) => String(w || "").trim().toLowerCase()).filter((w) => w.length > 2).slice(0, 4);
+      const current = b.intel || {};
+      return {
+        ...b,
+        intel: {
+          ...seeded,
+          ...current,
+          platforms: current.platforms?.length ? current.platforms : seeded.platforms,
+          keywords: current.keywords?.length ? current.keywords : words,
+          competitors: Object.keys(current.competitors || {}).length ? current.competitors : seeded.competitors,
+        },
+      };
+    });
     setDrafted(true);
     setStep("review");
   };
 
   const blockers = useMemo(() => {
     const missing = [];
-    if (!brand.brandName?.trim()) missing.push("a brand name");
-    if (!(brand.activePlatforms || []).length) missing.push("where you post");
-    if (targets.targetMode === "accounts" ? !targets.accountList?.trim() : !targets.niche?.trim()) missing.push("what to watch");
+    if (!brand.brandName?.trim()) missing.push({ id: "brandName", label: "a brand name" });
+    if (!targets.niche?.trim()) missing.push({ id: "ob-niche", label: "your niche" });
     return missing;
   }, [brand, targets]);
 
+  // Where the brand posts (for writing) follows the platforms it wants to win
+  // on, so setup asks once. A newsletter, if chosen, is kept.
+  const intelPlatforms = (brand.intel?.platforms || []).join(",");
+  useEffect(() => {
+    if (step !== "review") return;
+    const map = { instagram: "instagram", linkedin: "linkedin", x: "twitter" };
+    const mapped = (brand.intel?.platforms || []).map((p) => map[p]).filter(Boolean);
+    setBrand((b) => {
+      const keepEmail = (b.activePlatforms || []).includes("email") ? ["email"] : [];
+      const next = [...new Set([...mapped, ...keepEmail])];
+      return { ...b, activePlatforms: next.length ? next : ["instagram"] };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intelPlatforms, step]);
+
+  const showMissing = () => {
+    const first = blockers[0];
+    const el = first && document.getElementById(first.id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => el.focus(), 350);
+    }
+  };
+
+  // Finishing never spends anything: it saves the brand, fills in any market
+  // settings left empty, and goes to Today (or to plans, when there's none).
   const finish = () => {
+    if (!(brand.intel?.platforms || []).length) {
+      setBrand((b) => ({ ...b, intel: { ...intelFrom(b, targets), ...(b.intel || {}), platforms: intelFrom(b, targets).platforms } }));
+    }
     completeOnboarding();
     if (configured && !user) {
       router.push("/signup?next=/home");
       return;
     }
-    const name = targets.targetMode === "accounts" ? "Brands I watch" : targets.niche || "My market";
-    const id = saveSearch({ ...draft, ...targets, name }, []);
-    startRun(id);
-    router.push("/home");
+    router.push(account && !account.plan ? "/plans" : "/home");
   };
 
   const fade = reduced ? { opacity: 0 } : { opacity: 0, y: 12 };
@@ -132,8 +176,8 @@ export default function OnboardingPage() {
                 </div>
               </div>
               <p className="mt-4 max-w-[56ch] text-[15.5px] leading-relaxed text-muted">
-                Give me a name and a sentence. I'll draft the rest: the voice, the audience, the market to watch and a
-                tone for each platform. You check it next.
+                Give me a name and a sentence. I'll draft the rest: the voice, the audience, your market and
+                competitors, and a tone for each platform. You check it next.
               </p>
 
               <Card className="mt-7 p-5 sm:p-7">
@@ -231,12 +275,32 @@ export default function OnboardingPage() {
                 <ReviewCard title="The brand" drafted={drafted}>
                   <BrandInfoForm brand={brand} setBrand={setBrand} />
                 </ReviewCard>
-                <ReviewCard title="Where you post" drafted={drafted}>
-                  <PlatformPersonalityForm brand={brand} setBrand={setBrand} />
+                <ReviewCard title="Your market" drafted={drafted}>
+                  <div className="flex flex-col gap-6">
+                    <Field label="Your niche" required htmlFor="ob-niche" hint="What your market is called, in a few words. Everything is researched in it.">
+                      <Input
+                        id="ob-niche"
+                        value={targets.niche || ""}
+                        onChange={(e) => setTargets({ niche: e.target.value, targetMode: "niche" })}
+                        placeholder="Clean skincare for sensitive skin"
+                        maxLength={200}
+                      />
+                    </Field>
+                    <IntelForm brand={brand} setBrand={setBrand} compact />
+                  </div>
                 </ReviewCard>
-                <ReviewCard title="What I'll watch" drafted={drafted}>
-                  <TargetsForm targets={targets} setTargets={setTargets} />
-                </ReviewCard>
+                <details className="group rounded-[20px] border border-line bg-surface p-5 sm:p-7">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <span>
+                      <span className="font-display block text-[21px]">Writing tone for each platform</span>
+                      <span className="mt-1 block text-[13.5px] text-muted">Optional. Set it now or any time in Brand.</span>
+                    </span>
+                    <span className="text-[13px] font-medium text-accent-deep group-open:hidden">Set it now</span>
+                  </summary>
+                  <div className="mt-6">
+                    <PlatformPersonalityForm brand={brand} setBrand={setBrand} />
+                  </div>
+                </details>
               </div>
             </motion.section>
           )}
@@ -251,10 +315,13 @@ export default function OnboardingPage() {
               Back
             </Button>
             <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-3 gap-y-1">
-              {blockers.length ? <p className="min-w-0 text-[13px] text-muted">Still need {blockers.join(", ")}</p> : null}
-              <Button onClick={finish} disabled={blockers.length > 0}>
-                <Binoculars size={15} />
-                {configured && !user ? "Save and create account" : "Start watching"}
+              {blockers.length ? (
+                <button type="button" onClick={showMissing} className="min-w-0 text-left text-[13px] text-muted underline decoration-line-strong underline-offset-2 hover:text-ink">
+                  Still need {blockers.map((b) => b.label).join(" and ")}
+                </button>
+              ) : null}
+              <Button onClick={blockers.length ? showMissing : finish} aria-disabled={blockers.length > 0 || undefined} className={blockers.length ? "opacity-60" : undefined}>
+                {configured && !user ? "Save and create account" : "Finish setup"}
                 <ArrowRight size={14} weight="bold" />
               </Button>
             </div>

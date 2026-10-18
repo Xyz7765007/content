@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import { Button, IconButton, Progress, SPRING, cx } from "../ui";
 import Huesy from "../huesy/Huesy";
 import { clearRun, startRun, stopRun, useRuns } from "../../lib/runner";
+import { CostTag } from "../plan/PlanBits";
+import { PRICES } from "../../lib/account";
 import { useStore } from "../../lib/store";
 
 /**
@@ -43,17 +46,18 @@ export default function RunPanel({ searchId, className }) {
       return {
         mood: "sleepy",
         title: `Nothing in the last ${days} days`,
-        sub: days < 30 ? "It's a quiet stretch. A wider window usually finds more." : "Try a broader market or more brands to watch.",
+        sub: `No credits used. ${days < 30 ? "A wider window usually finds more." : "Try a broader market or more brands to watch."}`,
       };
     }
     if (run.phase === "stopped") {
       return {
         mood: "idle",
         title: found ? `Stopped. Kept the ${found} found so far` : "Stopped",
-        sub: found ? "They're in the list below." : "Nothing was found before it stopped.",
+        sub: found ? "They're in the list below." : "Nothing was found before it stopped, so no credits were used.",
       };
     }
-    return { mood: "oops", title: run.error?.message || "That search didn't finish.", sub: "Nothing was saved from it." };
+    const gated = ["no_plan", "no_credits", "studio_only"].includes(run.error?.code);
+    return { mood: "oops", title: run.error?.message || "That search didn't finish.", sub: gated ? "Nothing was charged." : run.error?.code === "network" ? "Nothing was saved from it." : "Nothing was saved from it, and no credits were used." };
   })();
 
   return (
@@ -112,15 +116,27 @@ export default function RunPanel({ searchId, className }) {
               }}
             >
               Widen to 30 days and look again
+              <CostTag credits={PRICES.radar} />
             </Button>
           </div>
         ) : null}
 
         {run.phase === "error" ? (
           <div className="mt-4">
-            <Button size="sm" variant="quiet" onClick={() => startRun(searchId)}>
-              Try again
-            </Button>
+            {run.error?.code === "no_plan" ? (
+              <Button as={Link} href="/plans" size="sm" variant="quiet">
+                See plans
+              </Button>
+            ) : run.error?.code === "no_credits" ? (
+              <Button as={Link} href="/profile?tab=account" size="sm" variant="quiet">
+                Your month
+              </Button>
+            ) : (
+              <Button size="sm" variant="quiet" onClick={() => startRun(searchId)}>
+                Try again
+                <CostTag credits={PRICES.radar} />
+              </Button>
+            )}
           </div>
         ) : null}
       </motion.section>

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAccess } from "../../../lib/ai/access";
+import { requireAdmin } from "../../../lib/admin";
 import { errorJson } from "../../../lib/ai/errors";
 
 const AT ="https://api.airtable.com/v0";
@@ -112,7 +112,8 @@ function toRecord(r) {
 
 export async function POST(req) {
   try {
-    await requireAccess();
+    // No screen uses this any more; only the owner can reach it.
+    await requireAdmin();
   } catch (err) {
     const { body, status } = errorJson(err);
     return NextResponse.json(body, { status });
