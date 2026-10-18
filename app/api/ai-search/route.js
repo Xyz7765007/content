@@ -1,52 +1,67 @@
 import { NextResponse } from "next/server";
+import { requireAccess } from "../../../lib/ai/access";
+import { errorJson, fail } from "../../../lib/ai/errors";
+import { runSearch } from "../../../lib/ai/run";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
+// Streams a search as it happens, one JSON object per line:
+//   { t: "status", text }       what Huesy is doing
+//   { t: "query", q }           a web search it just ran
+//   { t: "reading", hosts }     sites in the results it is reading
+//   { t: "signal", signal }     a finished signal, as soon as it is written
+//   { t: "ranked", ranks }      [{ id, fit, angle }] for the brand
+//   { t: "done", count }
+//   { t: "error", code, message }
+// Access problems answer before the stream starts, as plain JSON with a status.
 export async function POST(req) {
+  let body;
   try {
-    let body;
-    try { body = await req.json(); } catch {
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-    }
-
-    const { prompt } = body;
-    if (!prompt) return NextResponse.json({ error: "No prompt" }, { status: 400 });
-
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
-
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 4096,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-
-    const raw = await res.text();
-    let data;
-    try { data = JSON.parse(raw); } catch {
-      return NextResponse.json({ error: `Non-JSON from Anthropic (${res.status}): ${raw.substring(0, 150)}` }, { status: 502 });
-    }
-
-    if (!res.ok) {
-      return NextResponse.json({ error: data.error?.message || `API error ${res.status}` }, { status: res.status });
-    }
-
-    let text = "";
-    for (const block of data.content || []) {
-      if (block.type === "text") text += block.text;
-    }
-
-    return NextResponse.json({ text: text || "No results found." });
-  } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    body = await req.json();
+  } catch {
+    const { body: b, status } = errorJson(fail("bad_request", 400));
+    return NextResponse.json(b, { status });
   }
+
+  let user;
+  try {
+    ({ user } = await requireAccess());
+  } catch (err) {
+    const { body: b, status } = errorJson(err);
+    return NextResponse.json(b, { status });
+  }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event) => {
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        } catch {
+          /* the reader went away; the run stops at the next abort check */
+        }
+      };
+      try {
+        await runSearch({ config: body?.config, brand: body?.brand, user, send, abort: req.signal });
+      } catch (err) {
+        if (req.signal?.aborted) return;
+        const { body: b } = errorJson(err);
+        send({ t: "error", ...b.error });
+      } finally {
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

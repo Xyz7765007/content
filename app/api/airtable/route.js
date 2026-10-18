@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { requireAccess } from "../../../lib/ai/access";
+import { errorJson } from "../../../lib/ai/errors";
 
-const AT = "https://api.airtable.com/v0";
+const AT ="https://api.airtable.com/v0";
 const TBL_NAME = "Brand Profiles";
 
 const REQUIRED_FIELDS = [
@@ -43,7 +45,7 @@ async function findTable(base, key) {
 async function createTable(base, key) {
   return atReq(`/meta/bases/${base}/tables`, key, {
     method: "POST",
-    body: JSON.stringify({ name: TBL_NAME, description: "Brand profiles for Content Engine", fields: REQUIRED_FIELDS }),
+    body: JSON.stringify({ name: TBL_NAME, description: "Brand profiles for Huesy", fields: REQUIRED_FIELDS }),
   });
 }
 
@@ -109,6 +111,12 @@ function toRecord(r) {
 }
 
 export async function POST(req) {
+  try {
+    await requireAccess();
+  } catch (err) {
+    const { body, status } = errorJson(err);
+    return NextResponse.json(body, { status });
+  }
   try {
     const { action, data, recordId } = await req.json();
     const key = process.env.AIRTABLE_PAT;

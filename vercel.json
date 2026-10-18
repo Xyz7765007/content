@@ -4,7 +4,7 @@
       "maxDuration": 120
     },
     "app/api/ai-search/route.js": {
-      "maxDuration": 120
+      "maxDuration": 300
     },
     "app/api/generate-image/route.js": {
       "maxDuration": 60
