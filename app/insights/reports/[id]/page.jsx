@@ -311,7 +311,7 @@ function CompetitorCards({ competitors }) {
               <p className="text-[13px] text-muted">I couldn't confirm any of their accounts.</p>
             )}
             <dl className="grid grid-cols-3 gap-3 border-t border-line pt-3">
-              <Stat label="Ads running" value={c.ads?.running ?? 0} />
+              <Stat label="Ads running" value={c.ads?.more ? `${c.ads.running}+` : c.ads?.running ?? 0} />
               <Stat label="Reviews" value={c.reviews ? `${c.reviews.average}★` : "–"} />
               <Stat label="Mentions, 30d" value={c.mentions?.last30Days ?? 0} />
             </dl>

@@ -16,6 +16,8 @@ import { composeBriefing } from "../../../lib/intel/briefing.js";
 import { _test as W } from "../../../lib/intel/watch.js";
 import { _test as A } from "../../../lib/intel/agent.js";
 import { nameMatches } from "../../../lib/intel/accounts.js";
+import { isTheirAd, marketWords, pickPage, topicTerms } from "../../../lib/intel/tools.js";
+import { isTheirProduct } from "../../../lib/intel/reviews.js";
 import { lengthOf, slotOf } from "../../../lib/intel/taxonomy.js";
 
 let passed = 0;
@@ -38,7 +40,7 @@ t("every source's stand-in reply parses into complete records", async () => {
     "x.search": { q: "skincare lang:en", sort: "Top" }, "x.profile": { handle: "MyNykaa" }, "x.replies": { tweetId: "1" },
     "linkedin.search": { q: "skincare", sort: "relevance", window: "month" }, "linkedin.company": { url: "https://www.linkedin.com/company/acme/" }, "linkedin.companyPosts": { url: "https://www.linkedin.com/company/acme/" },
     "linkedin.profile": { url: "https://www.linkedin.com/in/someone/" }, "linkedin.userPosts": { url: "https://www.linkedin.com/in/someone/" }, "linkedin.comments": { postId: "123" }, "linkedin.ads": { keyword: "skincare" }, "people.email": { linkedinUrl: "https://www.linkedin.com/in/someone/" },
-    "reddit.search": { q: "skincare", sort: "top", timeframe: "month" }, "reddit.comments": { postId: "1x2" }, "facebook.posts": { url: "https://www.facebook.com/acme" }, "meta.ads": { q: "skincare" },
+    "reddit.search": { q: "skincare", sort: "top", timeframe: "month" }, "reddit.comments": { postId: "1x2" }, "facebook.posts": { url: "https://www.facebook.com/acme" }, "meta.ads": { q: "skincare" }, "meta.pages": { q: "Plum" }, "meta.pageAds": { pageId: "900001", country: "IN" },
     "reviews.trustpilot": { domain: "www.acme.example" }, "maps.search": { q: "acme store" }, "reviews.maps": { placeId: "ChIJ1" }, "amazon.search": { q: "sunscreen", country: "in" }, "reviews.amazon": { asin: "B01" },
     "creators.search": { platform: "instagram", limit: 10 },
   };
@@ -55,6 +57,8 @@ t("every source's stand-in reply parses into complete records", async () => {
       if (x.kind === "review") assert.ok(x.text && x.rating != null, `${name}: incomplete review`);
       if (x.kind === "article") assert.ok(x.title && x.url && x.postedAt, `${name}: incomplete article`);
       if (x.kind === "profile") assert.ok(x.handle || x.name, `${name}: incomplete profile`);
+      if (x.kind === "page") assert.ok(x.id && x.name && x.likes != null, `${name}: incomplete page`);
+      if (x.kind === "ad") assert.ok(x.id && (x.text || x.title) && (!name.startsWith("meta.") || x.pageId), `${name}: incomplete ad`);
     }
   }
 });
@@ -175,6 +179,55 @@ t("a search plan never spends two queries on the same words in different case", 
   const qs = postJobs("linkedin", map, { keywords: ["sunscreen india"] }, { topic: "Skincare routine", depth: "standard" }).map((j) => String(j.params.q || j.params.query || "").toLowerCase());
   assert.ok(qs.length >= 2, `only ${qs.length} queries`);
   assert.equal(new Set(qs).size, qs.length, qs.join(" | "));
+});
+
+t("a competitor's ads are only the ones its own page runs or that link to its site", () => {
+  // The live case: Plum Goodness's page is called "Plum"; a search for its name also returned preserves and kajal ads.
+  assert.equal(isTheirAd({ advertiser: "Plum" }, { advertiser: "Plum Goodness" }), true);
+  assert.equal(isTheirAd({ advertiser: "Be Minimalist" }, { advertiser: "Minimalist" }), true);
+  assert.equal(isTheirAd({ advertiser: "Reen Naturals" }, { advertiser: "Plum Goodness" }), false);
+  assert.equal(isTheirAd({ advertiser: "Glow" }, { advertiser: "Honest Glow" }), false);
+  assert.equal(isTheirAd({ advertiser: null, domain: "plumgoodness.com" }, { advertiser: "Plum Goodness", website: "plumgoodness.com" }), true);
+  assert.equal(isTheirAd({ advertiser: null, link: "https://shop.plumgoodness.com/x?utm=1" }, { advertiser: "Plum Goodness", website: "https://www.plumgoodness.com/" }), true);
+  assert.equal(isTheirAd({ advertiser: null, link: "https://notplumgoodness.com/" }, { advertiser: "Plum Goodness", website: "plumgoodness.com" }), false);
+});
+
+t("a brand's ad page is the one with its Instagram, not another business with the same name", () => {
+  // Real ad-library results, 19 Oct: "Plum Goodness" finds tiny regional pages; "Plum" finds a bank and the brand.
+  const pages = [
+    { id: "197123407589284", name: "Plum Goodness", likes: 34, verified: false, instagram: null },
+    { id: "107728071060320", name: "PlumGoodness Nepal", likes: 3740, verified: false, instagram: null },
+    { id: "557221327785260", name: "Plum", likes: 38957, verified: true, instagram: "withplum" },
+    { id: "511641355600533", name: "Plum", likes: 257242, verified: true, instagram: "plumgoodness" },
+    { id: "1652151725049353", name: "Plum Guide", likes: 86239, verified: true, instagram: "plumguide" },
+  ];
+  assert.equal(pickPage(pages, { advertiser: "Plum Goodness", instagram: "@PlumGoodness" })?.id, "511641355600533");
+  // Without an Instagram to go on: the best-liked real page carrying the name, never a 34-like page.
+  assert.equal(pickPage(pages, { advertiser: "Plum Goodness" })?.id, "511641355600533");
+  assert.equal(pickPage(pages.slice(0, 1), { advertiser: "Plum Goodness" }), null);
+  assert.equal(pickPage(pages, { advertiser: "Minimalist" }), null);
+});
+
+t("a brand's Amazon listings are only its own, not its rivals' from the same search", () => {
+  // The live case: a search for Plum Goodness listed Neutrogena and Lakme; Minimalist's listed Cetaphil.
+  assert.equal(isTheirProduct("Plum Green Tea Face Wash 100ml", "Plum Goodness"), true);
+  assert.equal(isTheirProduct("Minimalist SPF 30 Body Sunscreen", "Minimalist"), true);
+  assert.equal(isTheirProduct("mcaffeine", "mCaffeine"), true);
+  assert.equal(isTheirProduct("Dot & Key Watermelon Sunscreen", "Dot & Key"), true);
+  assert.equal(isTheirProduct("Lakme Sunscreen for Bright Skin, SPF 50", "Plum Goodness"), false);
+  assert.equal(isTheirProduct("Cetaphil Sun SPF 50 Light Gel", "Minimalist"), false);
+  assert.equal(isTheirProduct("The Body Shop Vitamin C Glow", "The Derma Co"), false);
+});
+
+t("news needs the market's own words, not places or words every business uses", () => {
+  const words = marketWords({ keywords: ["refillable packaging"], niche: "clean skincare" }, { terms: ["sunscreen India", "brand launches"], country: "IN" });
+  for (const w of ["refillable", "packaging", "clean", "skincare", "sunscreen"]) assert.ok(words.has(w), w);
+  for (const w of ["india", "brand", "launch"]) assert.ok(!words.has(w), w);
+  const offTopic = ["Alan Scott Enterprises Limited Company Profile & Facts", "150 UK small business grants to apply for right now", "How Much Did Sharebite Raise? Funding & Key Investors"];
+  const onTopic = ["Refillable Cleansing Balms", "Sunscreen sales double in Indian summer"];
+  const hits = (title) => topicTerms(title).some((w) => words.has(w));
+  assert.deepEqual(offTopic.filter(hits), []);
+  assert.deepEqual(onTopic.filter(hits), onTopic);
 });
 
 for (const [name, fn] of tests) {

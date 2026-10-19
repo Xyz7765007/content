@@ -153,6 +153,8 @@ s = await stream("/api/intel/report", { kind: "trends", params: { platform: "all
 rep = (await get(`/api/intel/report?id=${s.one?.("start")?.reportId}`)).body?.report;
 d = rep?.body?.data || {};
 check("T2 trend radar across platforms: several platforms plus the news", (d.platforms || []).length >= 2 && (d.news || []).length >= 1, `${(d.platforms || []).map((p) => `${p.platform}:${p.postsThisWeek}`).join(", ")}; ${d.news?.length} stories`);
+// Every stand-in news search also returns a company-profile page about nothing in the market.
+check("T3 trend radar news is about the market: off-topic stories are dropped (complaint 9)", (d.news || []).every((n) => !/Northwind/.test(n.title)), (d.news || []).map((n) => n.title.slice(0, 40)).join(" | "));
 
 /* ------------------------------------ #3 competitors: every platform + more */
 s = await stream("/api/intel/report", { kind: "competitors", params: { handles: ["Glowlab", "@dewdrop.notes", "https://www.linkedin.com/company/brightside/"] }, brand, targets });
@@ -194,6 +196,7 @@ let b = await post("/api/intel/briefing", { brand, targets });
 const bb = b.body?.briefing?.body || {};
 check("B1 briefing (complaint 6): covers several platforms, not just one", bb.v === 2 && (bb.platforms || []).length >= 2, (bb.platforms || []).map((p) => `${p.platform}:${p.posts}`).join(", "));
 check("B2 briefing: has the week's news", (bb.news || []).length >= 1);
+check("B4 briefing news is about the market: off-topic stories are dropped (complaint 9)", (bb.news || []).every((n) => !/Northwind/.test(n.title)));
 check("B3 briefing: never compares a week's posts to 'typical'", (bb.platforms || []).every((p) => (p.hot || []).every((h) => h.lift == null && h.beat == null)));
 
 /* ----------------------------------- #8, #9 watchlists: sources + kept safe */
