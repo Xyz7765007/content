@@ -84,7 +84,7 @@ export function PlanMeter({ compact = false, className }) {
           onClick={() => setOpen(true)}
           aria-label={`${creditsLabel(account.credits)} left. Open your month`}
           className={cx(
-            "tabular flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition-transform active:scale-[0.96] pointer-coarse:h-10",
+            "tabular flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition-transform active:scale-[0.96] pointer-coarse:h-11",
             low ? "border-danger/30 bg-danger-soft text-danger" : "border-line bg-surface text-ink",
             className
           )}

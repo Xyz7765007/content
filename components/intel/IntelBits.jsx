@@ -170,7 +170,7 @@ export function EvidenceStrip({ posts, title = "Posts behind this", className })
   return (
     <section className={className}>
       <h4 className="mb-2.5 text-[12.5px] font-medium text-muted">{title}</h4>
-      <div className="no-scrollbar -mx-1 flex snap-x gap-2.5 overflow-x-auto px-1 pb-1">
+      <div className="no-scrollbar -mx-1 flex snap-x scroll-px-1 gap-2.5 overflow-x-auto px-1 pb-1">
         {posts.map((p, i) => (
           <EvidencePost key={p.url || i} post={p} className="snap-start" />
         ))}

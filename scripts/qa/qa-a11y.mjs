@@ -9,6 +9,8 @@ const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
   const p = await ctx.newPage();
   await p.goto(`${BASE}/?utm_source=qa-site`, { waitUntil: "networkidle" });
+  // The sample sits just below the opening screen; once it is in view it is finished at once.
+  await p.locator("#sample").scrollIntoViewIfNeeded();
   await p.waitForTimeout(1500);
   check("M1 reduced motion: the sample run is already finished", await p.getByText("Get this for my market").isVisible());
   const animating = await p.evaluate(() => {
@@ -64,6 +66,12 @@ const b = await chromium.launch();
   await p.click("button[type=submit]");
   await p.waitForURL(/home/);
   await p.goto(`${BASE}/search`, { waitUntil: "networkidle" });
+  // Other suites clear the QA account's watchlists; make the one this check uses if it's missing.
+  if (!(await p.getByRole("link", { name: "Beauty and skincare" }).isVisible().catch(() => false))) {
+    const config = { name: "Beauty and skincare", targetMode: "niche", niche: "Beauty and skincare", subNiches: "", accountList: "", selectedSignals: [], researchPlatforms: ["google", "instagram", "twitter"], researchLocations: ["India"], resultRange: [10, 25], lookbackDays: 14 };
+    await p.request.post(`${BASE}/api/ai-search`, { data: { config, brand: { brandName: "Honest Glow", product: "skincare" }, searchId: `qa-a11y-${Date.now().toString(36)}`, name: config.name }, timeout: 120000 });
+    await p.goto(`${BASE}/search`, { waitUntil: "networkidle" });
+  }
   await p.getByRole("link", { name: "Beauty and skincare" }).click();
   await p.getByRole("button", { name: /Select several to write/ }).click();
   const box = p.getByRole("checkbox", { name: /^Select / }).first();
@@ -115,6 +123,14 @@ const b = await chromium.launch();
         .filter((x) => x.h > 0 && x.h < 44)
     );
     check(`D1 ${path}: touch targets at least 44px`, small.length === 0, small.slice(0, 4).map((x) => `${x.t}=${x.h}`).join(", "));
+    // D4: a swipe row rests at its start, so its first card keeps the page's inset.
+    // Snapping without scroll padding parks it on the first card's edge instead.
+    const shifted = await pp.evaluate(() =>
+      [...document.querySelectorAll("*")]
+        .filter((el) => el.offsetParent && /x/.test(getComputedStyle(el).scrollSnapType) && el.scrollWidth > el.clientWidth && el.scrollLeft !== 0)
+        .map((el) => `${(el.getAttribute("aria-label") || el.className).toString().slice(0, 30)}=${el.scrollLeft}`)
+    );
+    check(`D4 ${path}: swipe rows rest at their start`, shifted.length === 0, shifted.join(", "));
   }
   await phone.close();
 
@@ -231,3 +247,4 @@ const b = await chromium.launch();
 }
 await b.close();
 console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
+process.exit(results.every(Boolean) ? 0 : 1);

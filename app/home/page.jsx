@@ -108,7 +108,8 @@ export default function TodayPage() {
       ) : (
         <div className="flex flex-col gap-9">
           <section className="flex items-center gap-4">
-            {!panelRun ? <Huesy mood={newCount ? "found" : "idle"} size={52} className={account?.welcomeReport ? "max-sm:hidden" : undefined} /> : null}
+            {/* The first-playbook card below has its own Huesy, and one speaks at a time. */}
+            {!panelRun && !(account?.plan && account.welcomeReport) ? <Huesy mood={newCount ? "found" : "idle"} size={52} /> : null}
             <div className="min-w-0">
               <h2 className="display-lg text-[26px] sm:text-[30px]">
                 {greet()}

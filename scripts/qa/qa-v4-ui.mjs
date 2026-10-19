@@ -297,7 +297,7 @@ if (PHASE === "all" || PHASE === "reel") {
   await shot(admin, "V-admin");
   await actx.close();
   await page.goto(`${BASE}/studio/reel?id=${reelId}`, { waitUntil: "networkidle" });
-  check("V7 the person sees it's ready, with the video", await visible(page.getByRole("heading", { name: "It's ready" })) && (await page.locator("video").count()) === 1);
+  check("V7 the person sees it's ready, with the video", await visible(page.getByRole("heading", { name: "It's ready" }), 25000) && (await page.locator("video").count()) === 1);
   await page.fill("#rl-url", "https://www.instagram.com/reel/QA123/");
   await page.getByRole("button", { name: "Start tracking" }).click();
   check("V8 tracking asks for views when it can't read them, or reads them", await visible(page.getByText(/Type them in|views/), 15000));

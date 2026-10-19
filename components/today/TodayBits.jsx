@@ -266,7 +266,7 @@ function BriefingV2({ briefing, building, studio, onPick, note }) {
         From {b.posts.toLocaleString("en-US")} posts on {platforms.map((p) => PLATFORM_NAME(p.platform)).join(", ") || "your platforms"}
         {b.news?.length ? ` and ${b.news.length} news stories` : ""} in the last 7 days{b.thin ? ", an early read" : ""}. Free, every week.{" "}
         {onPick ? (
-          <button type="button" onClick={onPick} disabled={building} className="font-medium text-accent-deep underline decoration-accent-line underline-offset-2 hover:decoration-accent-deep disabled:opacity-50">
+          <button type="button" onClick={onPick} disabled={building} className="font-medium text-accent-deep underline decoration-accent-line underline-offset-2 hover:decoration-accent-deep disabled:opacity-50 pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center">
             Change platforms
           </button>
         ) : null}
@@ -282,7 +282,7 @@ function BriefingV2({ briefing, building, studio, onPick, note }) {
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
               className={cx(
-                "shrink-0 rounded-full border px-3 py-1.5 text-[13px] transition-colors",
+                "shrink-0 rounded-full border px-3 py-1.5 text-[13px] transition-colors pointer-coarse:min-h-11",
                 tab === t.id ? "border-ink bg-ink text-canvas" : "border-line bg-surface text-muted hover:border-line-strong hover:text-ink"
               )}
             >
@@ -446,7 +446,7 @@ export function QuickActions({ account, onReport }) {
       : [{ href: "/plans", label: "Make content with Studio", icon: TYPE_ICONS.creative }]),
   ];
   return (
-    <section aria-label="Quick actions" className="no-scrollbar -mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-6">
+    <section aria-label="Quick actions" className="no-scrollbar -mx-4 flex snap-x scroll-px-4 gap-2.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-6">
       {tiles.map((t, i) => {
         const Icon = t.icon;
         const cls = "group flex h-full flex-col items-start gap-3 rounded-[20px] border border-line bg-surface p-4 text-left transition-[transform,border-color,box-shadow] hover:border-line-strong hover:shadow-card active:scale-[0.97]";

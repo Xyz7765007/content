@@ -184,9 +184,18 @@ await fresh("tier2");
 /* ------------------------------------------------- 3: Today, every platform */
 {
   await rest(`intel_reports?user_id=eq.${UID}&kind=eq.briefing`, { method: "DELETE" });
+  // As a new account: the free first playbook is still unused, so its card is up.
+  await rest(`accounts?user_id=eq.${UID}`, { method: "PATCH", body: JSON.stringify({ welcome_report_used: false }) });
   const { ctx, page } = await open();
   await page.goto(`${BASE}/home`, { waitUntil: "networkidle" });
   check("B1 Today covers the market, not one platform (complaint 6)", await visible(page.getByRole("heading", { name: "This week in your market" }), 40000));
+  const onScreen = await page.evaluate(() =>
+    [...document.querySelectorAll(".huesy")].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return el.offsetParent && r.bottom > 0 && r.top < innerHeight && r.width > 0 && !el.closest("a[aria-label='Huesy home']");
+    }).length
+  );
+  check("B0 a new account's Today: the first-playbook card's Huesy is the only one on screen", (await visible(page.getByRole("heading", { name: "Your first content playbook is on me" }))) && onScreen === 1, `${onScreen} on screen`);
   const tabs = page.getByRole("tablist", { name: "Platforms" }).getByRole("tab");
   check("B2 there is a tab per platform", (await tabs.count()) >= 3, `${await tabs.count()} tabs`);
   check("B3 the week's news is there", await visible(page.getByRole("heading", { name: "In the news" })));
@@ -244,7 +253,12 @@ await fresh("tier2");
   const searchId = page.url().split("/").pop();
   check("W2 the check finds signals", await visible(page.locator("article").first(), 60000));
   check("W3 a move seen in several places links each of them", await visible(page.getByText("also on"), 20000));
-  check("L5 every signal has a clear link to its source", (await page.locator("article").count()) > 0 && (await page.locator("article").count()) === (await page.locator("article").getByRole("link", { name: /^(Read on|View on|Watch on|Read the story|Find this story)/ }).count()), `${await page.locator("article").count()} signals`);
+  // Counted in one pass: the check is still bringing signals in, and two separate counts can straddle a new one.
+  const linked = await page.locator("article").evaluateAll((els) => ({
+    total: els.length,
+    without: els.filter((a) => ![...a.querySelectorAll("a")].some((l) => /^(Read on|View on|Watch on|Read the story|Find this story)/.test(l.textContent.trim()))).length,
+  }));
+  check("L5 every signal has a clear link to its source", linked.total > 0 && linked.without === 0, `${linked.total} signals, ${linked.without} without a link`);
   await shot(page, "W-signals");
   // Lose this browser's copy entirely, as a sign-out on another device could.
   // The account's real copy is kept and put back afterwards.
@@ -268,9 +282,13 @@ await fresh("tier2");
   await page.goto(`${BASE}/ask`, { waitUntil: "networkidle" });
   await page.fill("#ask-input", "tell me the latest brand launches or collaboration by beauty brands in india");
   await page.keyboard.press("Enter");
-  check("K1 Ask checks the news (complaint 7)", await visible(page.getByText(/days of news/), 30000));
-  check("K2 and the platforms where the market talks", await visible(page.getByText(/Searching (Instagram|X|LinkedIn|Reddit|TikTok|YouTube) for/), 30000));
-  check("K3 the answer lands with linked, dated items", await visible(page.locator("main").getByRole("link").filter({ hasText: /\w/ }).nth(2), 30000));
+  const answered = await visible(page.locator("main").getByRole("link").filter({ hasText: /\w/ }).nth(2), 60000);
+  // With the data already cached the live steps flash by, so read them where they stay: "How I worked this out".
+  await page.getByText("How I worked this out").first().click().catch(() => {});
+  const steps = await page.locator("main").innerText();
+  check("K1 Ask checks the news (complaint 7)", /days of news|stories from the last \d+ days/.test(steps));
+  check("K2 and the platforms where the market talks", /(Searching|Found \d+) (Instagram|X|LinkedIn|Reddit|TikTok|YouTube)/.test(steps));
+  check("K3 the answer lands with linked, dated items", answered);
   check("K4 no data provider named", !VENDORS.test(await page.locator("main").innerText()));
   await shot(page, "K-ask");
   // 19 Oct, live: after a reload mid-answer the question sat there unanswered, so it was

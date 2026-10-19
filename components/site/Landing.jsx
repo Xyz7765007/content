@@ -1,8 +1,10 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
-import { motion, useReducedMotion } from "motion/react";
-import { SPRING } from "../ui";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
+import { ChatCircleDots, PencilSimpleLine, Plus, RocketLaunch, TrendUp } from "@phosphor-icons/react";
+import { SPRING, Segmented, cx } from "../ui";
+import Huesy from "../huesy/Huesy";
 import { SiteFooter, SiteNav } from "./SiteChrome";
 import JoinForm from "./JoinForm";
 import JoinSheet from "./JoinSheet";
@@ -10,10 +12,11 @@ import SampleRun from "./SampleRun";
 import { campaign, track } from "../../lib/site";
 
 /**
- * The waitlist site. One goal: a place on the list. The form is in the first
- * screen; the sample run shows the product working in seconds without
- * calling any AI; everything else answers the questions people ask before
- * they leave an email.
+ * The waitlist site. One goal: a place on the list. Huesy itself carries the
+ * page: it hears things in the opening screen, runs the sample, and reacts in
+ * the sections below, so the page says what the product does with very few
+ * words. Built for a phone first; every section is a few words and a thing to
+ * look at or tap.
  */
 export default function Landing() {
   useEffect(() => {
@@ -26,9 +29,9 @@ export default function Landing() {
       <SiteNav />
       <main id="main">
         <Hero />
-        <SampleSection />
-        <WhyItExists />
-        <How />
+        <TrySection />
+        <Jobs />
+        <TwoMornings />
         <Faq />
         <Finale />
       </main>
@@ -40,11 +43,10 @@ export default function Landing() {
   );
 }
 
-function Reveal({ children, className, delay = 0, as = "div" }) {
+function Reveal({ children, className, delay = 0 }) {
   const reduced = useReducedMotion();
-  const Tag = as === "li" ? motion.li : motion.div;
   return (
-    <Tag
+    <motion.div
       className={className}
       initial={reduced ? { opacity: 0 } : { opacity: 0, y: 18 }}
       whileInView={{ opacity: 1, y: 0 }}
@@ -52,230 +54,304 @@ function Reveal({ children, className, delay = 0, as = "div" }) {
       transition={{ ...SPRING, delay }}
     >
       {children}
-    </Tag>
+    </motion.div>
   );
 }
 
-/* -------------------------------------------------------------------- hero -- */
+/* -------------------------------------------------------------------- hero --
+   Huesy listening, and the things it hears popping up around it one by one:
+   a launch, a rising trend, a question buyers keep asking, a post ready.
+----------------------------------------------------------------------------- */
 
-function Hero() {
+const HEARD = [
+  { icon: RocketLaunch, text: "A rival just launched a refill", at: "left-0 top-[4%]" },
+  { icon: TrendUp, text: "#skincareroutine is rising", at: "right-0 top-[30%]" },
+  { icon: ChatCircleDots, text: "“Is it worth it?” keeps coming up", at: "left-0 bottom-[22%]" },
+  { icon: PencilSimpleLine, text: "Your post is ready", at: "right-[4%] bottom-0", ready: true },
+];
+
+function HueStage({ className }) {
   const reduced = useReducedMotion();
-  // The headline and the form paint with the page, so the first thing a
-  // visitor sees is never waiting on an animation. Only the sample run eases in.
+  const [heard, setHeard] = useState(0);
+  useEffect(() => {
+    if (reduced) {
+      setHeard(HEARD.length);
+      return undefined;
+    }
+    const timers = HEARD.map((_, i) => setTimeout(() => setHeard(i + 1), 600 + i * 700));
+    return () => timers.forEach(clearTimeout);
+  }, [reduced]);
+  // Scanning while it listens, a happy hop once the post is ready.
+  const mood = heard >= HEARD.length ? "found" : heard ? "watch" : "idle";
+
   return (
-    <section className="relative -mt-16 overflow-hidden pt-16">
-      <div className="aurora grain absolute inset-0" aria-hidden="true" />
-      {/* Top aligned with an offset that centres the sample run on screen, so
-          a taller joined state grows downward and the headline never moves. */}
-      <div className="relative mx-auto grid max-w-[1200px] grid-cols-1 items-start gap-10 px-4 pb-12 pt-8 sm:px-6 sm:pt-14 lg:min-h-[calc(100dvh-64px)] lg:grid-cols-[minmax(0,1fr)_minmax(0,500px)] lg:gap-14 lg:px-8 lg:py-10">
-        <div className="max-w-[600px] lg:mt-[max(0px,calc((100dvh-64px-546px)/2-40px))] lg:pt-14">
-          <h1 className="display-xl text-[40px] sm:text-[54px] lg:text-[62px]">Stop finding out from other people’s posts.</h1>
-          <p className="mt-5 max-w-[50ch] text-[17px] leading-relaxed text-muted sm:text-[18px]">
-            Huesy checks Google News, Instagram and X for brand launches, collabs and campaigns, ranks them for your
-            brand, then drafts the post in your voice.
-          </p>
-          <div className="mt-8 max-w-[520px]" data-hero-join>
-            <JoinForm source="hero" note="We're opening Huesy a few people at a time. Your email is only used to invite you." />
-          </div>
-        </div>
-
-        <motion.div
-          initial={reduced ? false : { opacity: 0, y: 24, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ ...SPRING, delay: 0.15 }}
-          className="hidden lg:mt-[max(0px,calc((100dvh-64px-546px)/2-40px))] lg:block"
-        >
-          <SampleRun autoplay source="hero" />
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ------------------------------------------------------------ sample (sm) -- */
-
-function SampleSection() {
-  return (
-    <section id="sample" className="scroll-mt-20 border-y border-line bg-surface py-14 lg:py-20">
-      <div className="mx-auto grid max-w-[1200px] grid-cols-1 items-center gap-10 px-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,500px)] lg:gap-14 lg:px-8">
-        <Reveal>
-          <h2 className="display-lg max-w-[18ch] text-[30px] sm:text-[40px]">A morning with Huesy, in seven seconds.</h2>
-          <p className="mt-4 max-w-[46ch] text-[16px] leading-relaxed text-muted">
-            Pick a market. Huesy checks the news, ranks what it finds for your brand, and turns the best one into a post
-            for each place you publish. This one is a sample; yours would be your market, in your voice.
-          </p>
-          <ul className="mt-6 flex flex-col gap-2.5 text-[14.5px] text-ink">
-            {[
-              "Ranked for your brand, best fit first",
-              "Every signal links to where it came from",
-              "Drafts for Instagram, LinkedIn, X and your newsletter",
-            ].map((t) => (
-              <li key={t} className="flex items-start gap-2.5">
-                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent-deep" aria-hidden="true" />
-                {t}
-              </li>
-            ))}
-          </ul>
-        </Reveal>
-        <Reveal delay={0.08}>
-          <SampleRun autoplay source="section" className="lg:hidden" />
-          <div className="hidden rounded-[24px] border border-dashed border-line-strong p-6 text-[14px] leading-relaxed text-muted lg:block">
-            The sample run is up at the top of the page. Pick another market there to see it again, or change the tab to
-            see the same news written for LinkedIn, X and a newsletter.
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-/* --------------------------------------------------------------------- why -- */
-
-const WITHOUT = [
-  { time: "9:02", text: "A launch goes live in a brand's Stories." },
-  { time: "11:40", text: "People are arguing about it on X." },
-  { time: "Friday", text: "You read about it in someone else's recap." },
-];
-const WITH = [
-  { time: "9:15", text: "You open Huesy with your coffee and press Check." },
-  { time: "9:17", text: "The launch is at the top, ranked for your brand, with its source." },
-  { time: "9:25", text: "The post is drafted in your voice. You tweak a line and post." },
-];
-
-function WhyItExists() {
-  return (
-    <section className="py-16 lg:py-24">
-      <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8">
-        <Reveal>
-          <h2 className="display-lg max-w-[22ch] text-[30px] sm:text-[40px]">
-            Huesy started with a marketer who kept hearing the news last.
-          </h2>
-          <p className="mt-4 max-w-[60ch] text-[16px] leading-relaxed text-muted">
-            There was no single place that said a launch, a collab or a campaign had just happened. By the time it
-            reached a newsletter or a recap, the moment to say something had passed. Here's the difference, on an
-            ordinary morning.
-          </p>
-        </Reveal>
-
-        <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Reveal>
-            <Timeline title="Without Huesy" items={WITHOUT} tone="muted" />
-          </Reveal>
-          <Reveal delay={0.08}>
-            <Timeline title="With Huesy" items={WITH} tone="accent" />
-          </Reveal>
+    <div className={cx("relative mx-auto w-full max-w-[440px]", className)} aria-hidden="true">
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="scale-[0.82] sm:scale-100">
+          <Huesy mood={mood} size={168} />
         </div>
       </div>
-    </section>
-  );
-}
-
-function Timeline({ title, items, tone }) {
-  const accent = tone === "accent";
-  return (
-    <div className={accent ? "h-full rounded-[22px] border border-mist bg-mist-soft p-6" : "h-full rounded-[22px] border border-line bg-surface p-6"}>
-      <p className={accent ? "meta text-mist-deep" : "meta"}>{title}</p>
-      <ol className="mt-5 flex flex-col gap-4">
-        {items.map((it) => (
-          <li key={it.time} className="flex gap-4">
-            <span className={accent ? "font-display tabular w-[64px] shrink-0 text-[17px] text-mist-deep" : "font-display tabular w-[64px] shrink-0 text-[17px] text-muted"}>
-              {it.time}
-            </span>
-            <span className="text-[15px] leading-relaxed text-ink">{it.text}</span>
-          </li>
-        ))}
-      </ol>
+      {HEARD.map((h, i) => {
+        const Icon = h.icon;
+        return heard > i ? (
+          <motion.div
+            key={h.text}
+            className={cx("absolute max-w-[78%]", h.at)}
+            initial={reduced ? false : { opacity: 0, scale: 0.6, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 280, damping: 18 }}
+          >
+            <motion.span
+              animate={reduced ? undefined : { y: [0, -5, 0] }}
+              transition={{ duration: 3.2 + i * 0.45, repeat: Infinity, ease: "easeInOut" }}
+              className={cx(
+                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium shadow-soft sm:text-[13.5px]",
+                h.ready ? "border-accent-line bg-accent-soft text-accent-deep" : "border-line bg-raised text-ink"
+              )}
+            >
+              <Icon size={14} weight="bold" className={h.ready ? "" : "text-accent-deep"} />
+              <span className="truncate">{h.text}</span>
+            </motion.span>
+          </motion.div>
+        ) : null;
+      })}
     </div>
   );
 }
 
-/* --------------------------------------------------------------------- how -- */
-
-const STEPS = [
-  {
-    title: "Tell Huesy your brand in a sentence",
-    body: "It drafts your voice, your audience and the market worth watching. You change anything that's off.",
-  },
-  {
-    title: "Check whenever you like",
-    body: "One tap and it reads Google News, Instagram and X for launches, collabs, campaigns and market moves, ranked for your brand, each linked to its source.",
-  },
-  {
-    title: "Pick a signal and get the post",
-    body: "A caption and creative brief, a LinkedIn post, a post for X or a newsletter, in your voice. You review it and post it yourself.",
-  },
-];
-
-function How() {
+function Hero() {
   return (
-    <section id="how" className="scroll-mt-20 border-y border-line bg-surface py-16 lg:py-24">
-      <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-4 sm:px-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] lg:gap-20 lg:px-8">
-        <Reveal className="lg:sticky lg:top-28 lg:self-start">
-          <p className="meta mb-4">When your place opens</p>
-          <h2 className="display-lg text-[30px] sm:text-[40px]">A minute to set up. Then one tap a morning.</h2>
-        </Reveal>
-        <ol className="flex flex-col">
-          {STEPS.map((s, i) => (
-            <Reveal key={s.title} delay={i * 0.05} as="li" className={i > 0 ? "flex gap-5 border-t border-line py-7" : "flex gap-5 pb-7 lg:pt-2"}>
-              <span className="font-display tabular flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line-strong bg-raised text-[16px] text-ink">
-                {i + 1}
-              </span>
-              <div>
-                <h3 className="font-display text-[22px] leading-snug">{s.title}</h3>
-                <p className="mt-2 max-w-[56ch] text-[15px] leading-relaxed text-muted">{s.body}</p>
-              </div>
-            </Reveal>
-          ))}
-        </ol>
+    <section className="relative -mt-16 overflow-hidden pt-16">
+      <div className="aurora grain absolute inset-0" aria-hidden="true" />
+      <div className="relative mx-auto grid max-w-[1200px] grid-cols-1 items-center gap-2 px-4 pb-12 pt-4 sm:px-6 lg:min-h-[min(calc(100dvh-64px),720px)] lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:gap-14 lg:px-8 lg:py-10">
+        <HueStage className="h-[clamp(230px,34dvh,300px)] lg:order-2 lg:h-[420px]" />
+        <div className="max-w-[560px] lg:order-1">
+          <h1 className="display-xl text-[44px] sm:text-[58px] lg:text-[68px]">Hear it first. Post it first.</h1>
+          <p className="mt-3 max-w-[34ch] text-[17px] leading-relaxed text-muted sm:text-[19px]">
+            Huesy watches your market and writes the posts. You just pick.
+          </p>
+          <div className="mt-6 max-w-[520px]" data-hero-join>
+            <JoinForm source="hero" note="We let people in a few at a time. Your email is only for your invite." />
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-/* --------------------------------------------------------------------- faq -- */
+/* --------------------------------------------------------------------- try --
+   The product, running. A title and the sample, nothing to read first.
+----------------------------------------------------------------------------- */
+
+function TrySection() {
+  return (
+    <section id="sample" className="scroll-mt-20 border-y border-line bg-surface py-12 lg:py-20">
+      <div className="mx-auto grid max-w-[1200px] grid-cols-1 items-center gap-6 px-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,500px)] lg:gap-14 lg:px-8">
+        <Reveal>
+          <h2 className="display-lg text-[34px] sm:text-[44px]">Try it. Pick a market.</h2>
+          <p className="mt-2 text-[16px] text-muted">Seven seconds, start to post.</p>
+        </Reveal>
+        <Reveal delay={0.06}>
+          <SampleRun autoplay source="section" />
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------- jobs --
+   What it does, as three moods of Huesy. Swipe on a phone; wider, watching
+   runs across the top with finding and writing under it.
+----------------------------------------------------------------------------- */
+
+const WATCHES = ["News", "Instagram", "TikTok", "X", "LinkedIn", "Reddit", "YouTube", "Reviews"];
+const FINDS = [
+  { tag: "Launch", text: "A rival's new range" },
+  { tag: "Trend", text: "A topic taking off" },
+  { tag: "Question", text: "What buyers keep asking" },
+];
+const WRITES = ["Posts", "Carousels", "Creatives", "Reels"];
+
+function Chip({ children, tone = "plain" }) {
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center rounded-full border px-2.5 py-1 text-[12.5px]",
+        tone === "accent" ? "border-accent-line bg-surface text-accent-deep" : "border-line bg-surface text-ink"
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function JobCard({ mood, title, line, className, children }) {
+  return (
+    <article className={cx("flex w-[84%] shrink-0 snap-start flex-col gap-4 rounded-[24px] border p-5 sm:w-[60%] md:w-auto", className)}>
+      <div className="flex items-center gap-3">
+        <Huesy mood={mood} size={48} track={false} />
+        <h3 className="display-lg text-[24px] leading-tight">{title}</h3>
+      </div>
+      <p className="text-[15px] leading-snug text-ink/80">{line}</p>
+      <div className="mt-auto">{children}</div>
+    </article>
+  );
+}
+
+function Jobs() {
+  return (
+    <section id="how" className="scroll-mt-20 py-14 lg:py-24">
+      <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8">
+        <Reveal>
+          <h2 className="display-lg text-[34px] sm:text-[44px]">One nosy blob. Three jobs.</h2>
+        </Reveal>
+        {/* A phone swipes through the three; wider screens see them together. */}
+        <Reveal delay={0.06}>
+          <div className="no-scrollbar -mx-4 mt-6 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0">
+            <JobCard mood="watch" title="It watches" line="Your market, every day, wherever your buyers talk." className="aurora border-line md:col-span-2">
+              <div className="flex flex-wrap gap-1.5">
+                {WATCHES.map((w) => (
+                  <Chip key={w}>{w}</Chip>
+                ))}
+              </div>
+            </JobCard>
+            <JobCard mood="found" title="It finds" line="What's worth a post, ranked for your brand." className="border-mist bg-mist-soft">
+              <ul className="flex flex-col gap-1.5">
+                {FINDS.map((f) => (
+                  <li key={f.tag} className="flex items-center gap-2 text-[13.5px] text-ink">
+                    <Chip tone="accent">{f.tag}</Chip>
+                    {f.text}
+                  </li>
+                ))}
+              </ul>
+            </JobCard>
+            <JobCard mood="write" title="It writes" line="In your voice. You read it, you post it." className="border-accent-line bg-accent-soft">
+              <div className="flex flex-wrap gap-1.5">
+                {WRITES.map((w) => (
+                  <Chip key={w}>{w}</Chip>
+                ))}
+              </div>
+            </JobCard>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+/* ---------------------------------------------------------------- mornings --
+   The same morning without and with Huesy, one tap apart. It flips to "with"
+   by itself once, the first time it is on screen, so a scroller sees both.
+----------------------------------------------------------------------------- */
+
+const MORNINGS = {
+  without: [
+    { time: "9:02", text: "A rival's launch goes up in Stories." },
+    { time: "11:40", text: "Everyone's talking about it on X." },
+    { time: "Friday", text: "You read about it in a recap. Too late." },
+  ],
+  with: [
+    { time: "9:15", text: "Huesy shows you the launch, with its source." },
+    { time: "9:17", text: "Your post is already drafted." },
+    { time: "9:25", text: "You change a line and post. First." },
+  ],
+};
+
+function TwoMornings() {
+  const reduced = useReducedMotion();
+  const ref = useRef(null);
+  const inView = useInView(ref, { amount: 0.5, once: true });
+  const [side, setSide] = useState("without");
+  const touched = useRef(false);
+  useEffect(() => {
+    if (!inView || touched.current || reduced) return undefined;
+    const t = setTimeout(() => {
+      if (!touched.current) setSide("with");
+    }, 2600);
+    return () => clearTimeout(t);
+  }, [inView, reduced]);
+  const withIt = side === "with";
+
+  return (
+    <section ref={ref} className="border-y border-line bg-surface py-14 lg:py-24">
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-8 px-4 sm:px-6 lg:max-w-[600px] lg:gap-10 lg:px-0">
+        <Reveal className="lg:text-center">
+          <h2 className="display-lg text-[34px] sm:text-[44px]">Your morning, two ways.</h2>
+          <Segmented
+            label="Your morning"
+            className="mt-5"
+            value={side}
+            onChange={(v) => {
+              touched.current = true;
+              setSide(v);
+            }}
+            options={[
+              { id: "without", label: "Without Huesy" },
+              { id: "with", label: "With Huesy" },
+            ]}
+          />
+        </Reveal>
+        <Reveal delay={0.06}>
+          <div className={cx("rounded-[24px] border p-5 transition-colors duration-300 sm:p-6", withIt ? "border-mist bg-mist-soft" : "border-line bg-canvas")}>
+            <div className="mb-4 flex items-center gap-3">
+              <Huesy mood={withIt ? "found" : "sleepy"} size={44} track={false} />
+              <p className="text-[14px] font-medium text-ink">{withIt ? "You hear it first." : "You hear it last."}</p>
+            </div>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.ol
+                key={side}
+                className="flex flex-col gap-3"
+                initial={reduced ? { opacity: 0 } : { opacity: 0, x: withIt ? 16 : -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22 }}
+              >
+                {MORNINGS[side].map((m) => (
+                  <li key={m.time} className="flex items-baseline gap-4">
+                    <span className={cx("font-display tabular w-[60px] shrink-0 text-[17px]", withIt ? "text-mist-deep" : "text-muted")}>{m.time}</span>
+                    <span className="text-[15.5px] leading-snug text-ink">{m.text}</span>
+                  </li>
+                ))}
+              </motion.ol>
+            </AnimatePresence>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+/* --------------------------------------------------------------------- faq --
+   Four questions, closed until tapped.
+----------------------------------------------------------------------------- */
 
 const FAQ = [
-  {
-    q: "Does Huesy post for me?",
-    a: "No. It finds the news and drafts the post. You read it, change what you like, and post it yourself.",
-  },
-  {
-    q: "Where does it look?",
-    a: "Google News, Instagram and X, in the regions you choose. Every signal links to where it came from, so you can check it before you write.",
-  },
-  {
-    q: "Will it sound like us?",
-    a: "You set your voice once, with example posts if you have them, and a tone for each platform. Drafts follow it, and you can refine any draft in a click.",
-  },
-  {
-    q: "Who is it for?",
-    a: "Social media managers, founders who run their own accounts, and brand or agency teams who need to react while a story is still moving.",
-  },
-  {
-    q: "When can I start?",
-    a: "We're letting people in a few at a time. Join the list and we'll email you when your place opens.",
-  },
-  {
-    q: "What happens to my email?",
-    a: "It's only used to invite you. Ask us through the contact page and we'll delete it.",
-  },
+  { q: "Does Huesy post for me?", a: "No. It finds the moment and drafts the post. You check it and post it yourself." },
+  { q: "Where does it look?", a: "The news, Instagram, TikTok, X, LinkedIn, Reddit, YouTube and reviews. Everything links to its source." },
+  { q: "Will it sound like us?", a: "Yes. You set your voice once, and every draft follows it. Change anything in a tap." },
+  { q: "When can I start?", a: "We let people in a few at a time. Join the list and we'll email you when it's your turn." },
 ];
 
 function Faq() {
   return (
-    <section id="faq" className="scroll-mt-20 py-16 lg:py-24">
-      <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8">
+    <section id="faq" className="scroll-mt-20 py-14 lg:py-24">
+      <div className="mx-auto max-w-[760px] px-4 sm:px-6 lg:px-8">
         <Reveal>
-          <h2 className="display-lg text-[30px] sm:text-[40px]">Questions</h2>
+          <h2 className="display-lg text-[34px] sm:text-[44px]">Questions</h2>
         </Reveal>
-        <dl className="mt-10 grid grid-cols-1 gap-x-12 gap-y-9 md:grid-cols-2">
+        <div className="mt-6 flex flex-col gap-2.5">
           {FAQ.map((f, i) => (
-            <Reveal key={f.q} delay={(i % 2) * 0.05}>
-              <dt className="font-display text-[20px] leading-snug text-ink">{f.q}</dt>
-              <dd className="mt-2 max-w-[52ch] text-[15px] leading-relaxed text-muted">{f.a}</dd>
+            <Reveal key={f.q} delay={i * 0.04}>
+              <details className="group rounded-[20px] border border-line bg-surface px-5 open:bg-raised">
+                <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-3 text-[17px] font-medium text-ink [&::-webkit-details-marker]:hidden">
+                  {f.q}
+                  <Plus size={16} weight="bold" className="shrink-0 text-muted transition-transform duration-200 group-open:rotate-45" aria-hidden="true" />
+                </summary>
+                <p className="pb-4 text-[15px] leading-relaxed text-muted">{f.a}</p>
+              </details>
             </Reveal>
           ))}
-        </dl>
+        </div>
       </div>
     </section>
   );
@@ -286,12 +362,13 @@ function Faq() {
 function Finale() {
   return (
     <section className="px-4 pb-16 sm:px-6 lg:px-8 lg:pb-24">
-      <Reveal className="aurora grain relative mx-auto max-w-[1200px] overflow-hidden rounded-[24px] border border-line px-5 py-14 text-center sm:px-10 lg:py-20">
-        <h2 className="display-lg mx-auto max-w-[17ch] text-[32px] sm:text-[44px]">Built for the people who have to post today.</h2>
-        <p className="mx-auto mt-4 max-w-[52ch] text-[16px] leading-relaxed text-muted">
-          Join the waitlist and we'll email you when your place opens.
-        </p>
-        <div className="mx-auto mt-8 max-w-[520px] text-left">
+      <Reveal className="aurora grain relative mx-auto max-w-[1200px] overflow-hidden rounded-[24px] border border-line px-5 pb-8 pt-10 text-center sm:px-10 lg:py-20">
+        <div className="flex justify-center">
+          <Huesy mood="idle" size={72} />
+        </div>
+        <h2 className="display-lg mx-auto mt-4 max-w-[16ch] text-[36px] sm:text-[48px]">Get in early.</h2>
+        <p className="mx-auto mt-2 max-w-[36ch] text-[16px] text-muted">We'll email you when it's your turn.</p>
+        <div className="mx-auto mt-7 max-w-[520px] text-left">
           <JoinForm source="finale" />
         </div>
       </Reveal>

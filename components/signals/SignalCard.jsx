@@ -110,7 +110,7 @@ export default function SignalCard({
           <button
             type="button"
             onClick={() => onOpen(signal)}
-            className="text-left decoration-accent-line decoration-2 underline-offset-4 hover:underline"
+            className="text-left decoration-accent-line decoration-2 underline-offset-4 hover:underline pointer-coarse:-my-2.5 pointer-coarse:py-2.5"
           >
             {signal.headline}
           </button>
