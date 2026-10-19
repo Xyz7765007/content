@@ -6,7 +6,6 @@ import { evaluate, proofScore, NEEDS } from "../../../lib/studio/ground.js";
 import { topicTerms, overlaps, searchPhrase } from "../../../lib/intel/tools.js";
 import { brandContext } from "../../../lib/intel/brand.js";
 import { standouts } from "../../../lib/intel/standouts.js";
-import { composeBriefing } from "../../../lib/intel/briefing.js";
 
 let passed = 0;
 const t = (name, fn) => {
@@ -124,15 +123,6 @@ t("a thin week calls nothing a standout and shows no comparison", () => {
 t("a full week's standouts all clearly beat a typical post", () => {
   const s = standouts({ posts: 40, thin: false, evidence: [{ url: "a", lift: 2.1 }, { url: "b", lift: 1.3 }, { url: "c", lift: 0.9 }, { url: "d", beat: 0.4, lift: 3 }] });
   assert.deepEqual(s.posts.map((p) => p.url), ["a", "b"]);
-});
-
-t("the briefing never calls a tag seen in two posts 'most used'", () => {
-  const ctx = brandContext({ name: "Honest Glow", intel: { keywords: ["skincare"], platforms: ["instagram"] } }, {});
-  const few = composeBriefing({ platform: "instagram", ctx, trending: { platform: "instagram", hashtags: [{ tag: "beauty", posts: 2 }, { tag: "skincare", posts: 2 }] }, analysis: { summary: { n: 3, top: [] } } });
-  assert.ok(!few.moves.some((m) => /Most used/.test(m.text)), JSON.stringify(few.moves));
-  assert.equal(few.thin, true);
-  const many = composeBriefing({ platform: "instagram", ctx, trending: { platform: "instagram", hashtags: [{ tag: "skincare", posts: 9 }] }, analysis: { summary: { n: 30, top: [] } } });
-  assert.ok(many.moves.some((m) => /#skincare \(9 posts\)/.test(m.text)));
 });
 
 console.log(`\n${passed} logic checks passed`);

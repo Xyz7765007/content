@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "../../../lib/ai/access";
 import { errorJson, fail } from "../../../lib/ai/errors";
-import { runSearch } from "../../../lib/ai/run";
+import { runWatch } from "../../../lib/intel/watch";
 import { refundCredits, requirePlan, spendCredits } from "../../../lib/billing/account";
 import { PRICES } from "../../../lib/plans";
 
 export const maxDuration = 300;
 
-// Streams a search as it happens, one JSON object per line:
+// Streams a watchlist check as it happens, one JSON object per line. Every
+// signal is also saved on the server as it is found (lib/intel/watch.js).
 //   { t: "status", text }       what Huesy is doing
 //   { t: "query", q }           a web search it just ran
 //   { t: "reading", hosts }     sites in the results it is reading
@@ -70,7 +71,7 @@ export async function POST(req) {
           }
           send(event.t === "done" ? { ...event, credits: balance, charged: PRICES.radar } : event);
         };
-        await runSearch({ config: body?.config, brand: body?.brand, user, send: counted, abort: gone.signal });
+        await runWatch({ config: body?.config, brand: body?.brand, searchId: typeof body?.searchId === "string" ? body.searchId.slice(0, 80) : null, name: typeof body?.name === "string" ? body.name.slice(0, 120) : null, user, send: counted, abort: gone.signal });
         if ((finished ? !found : !signals) && payer) {
           const back = await refundCredits(payer, PRICES.radar, finished ? "radar_empty" : "radar_stopped");
           send({ t: "refund", credits: back ?? balance, reason: finished ? "empty" : "stopped" });

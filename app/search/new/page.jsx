@@ -195,7 +195,7 @@ function Builder() {
             <AnimatePresence mode="wait" initial={false}>
               {cfg.targetMode === "accounts" ? (
                 <motion.div key="accounts" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={SPRING}>
-                  <Field label="Brands to watch" required htmlFor="b-accounts" hint="One per line, or separated by commas. Competitors, partners, anyone whose moves matter.">
+                  <Field label="Brands to watch" required htmlFor="b-accounts" hint="Names, @handles or links, one per line or separated by commas. Competitors, partners, anyone whose moves matter.">
                     <Textarea
                       id="b-accounts"
                       rows={5}
@@ -300,10 +300,10 @@ function Builder() {
         </Card>
 
         <Card className="flex flex-col gap-5 p-5 sm:p-6">
-          <Field label="Where to look">
+          <Field label="Where to look" hint="Pick every place your market talks. More places make a fuller read, and a check costs the same.">
             <div className="flex flex-wrap gap-2">
               {RESEARCH_PLATFORMS.map((p) => (
-                <Chip key={p.id} selected={(cfg.researchPlatforms || []).includes(p.id)} onClick={() => togglePlatform(p.id)}>
+                <Chip key={p.id} selected={(cfg.researchPlatforms || []).includes(p.id)} onClick={() => togglePlatform(p.id)} title={p.hint}>
                   {p.label}
                 </Chip>
               ))}
@@ -335,15 +335,24 @@ function Builder() {
       <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom,0px))] z-30 px-4 lg:bottom-5 lg:left-[232px] lg:px-8">
         <div className="mx-auto flex max-w-[760px] flex-wrap items-center justify-between gap-3 rounded-[20px] border border-line-strong bg-surface p-3 pl-4 shadow-float">
           <p className="min-w-0 flex-1 truncate text-[13px] text-muted">{summary}</p>
-          <div className="flex items-center gap-2">
-            <Button as={Link} href={editing ? `/search/${editing.id}` : "/search"} variant="ghost" size="sm">
+          {/* On a phone the header's back arrow cancels, "Just save" sits beside the summary and the main
+              action gets its own full-width row, so nothing runs off the screen. */}
+          <div className="ml-auto flex items-center gap-2 max-sm:contents">
+            <Button as={Link} href={editing ? `/search/${editing.id}` : "/search"} variant="ghost" size="sm" className="max-sm:hidden">
               Cancel
             </Button>
-            <Button variant="quiet" size="md" onClick={() => submit(false)} disabled={!ready}>
-              {editing ? "Save" : "Save without checking"}
+            <Button variant="quiet" size="md" onClick={() => submit(false)} disabled={!ready} className="shrink-0">
+              {editing ? (
+                "Save"
+              ) : (
+                <>
+                  <span className="sm:hidden">Just save</span>
+                  <span className="max-sm:hidden">Save without checking</span>
+                </>
+              )}
             </Button>
             {account?.plan ? (
-              <Button onClick={() => submit(true)} disabled={!ready}>
+              <Button onClick={() => submit(true)} disabled={!ready} className="max-sm:w-full">
                 <Binoculars size={15} />
                 {editing ? "Save and check" : "Start watching"}
                 <CostTag credits={PRICES.radar} />

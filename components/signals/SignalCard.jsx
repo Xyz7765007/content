@@ -58,6 +58,22 @@ export default function SignalCard({
           <span>
             {[signal.source, relativeDay(signal.date)].filter(Boolean).join(" · ")}
           </span>
+          {/* The same move seen in several places: every source, linked. */}
+          {(signal.sources || []).length > 1 ? (
+            <span className="inline-flex flex-wrap items-center gap-x-1.5">
+              <span aria-hidden="true">·</span>
+              <span>also on</span>
+              {signal.sources.slice(1, 4).map((x, i) =>
+                x.url ? (
+                  <a key={i} href={x.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline decoration-line-strong underline-offset-2 hover:text-accent-deep">
+                    {x.label}
+                  </a>
+                ) : (
+                  <span key={i}>{x.label}</span>
+                )
+              )}
+            </span>
+          ) : null}
           {signal.sample ? <Badge tone="mist">Sample</Badge> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

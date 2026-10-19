@@ -123,7 +123,8 @@ let s = await stream("/api/intel/ask", { question: "What content is working in m
 const start = s.one?.("start");
 check("A1 ask: streams start → steps → text → done", start && s.of("step").length >= 2 && s.of("text").length > 3 && s.one("done"), `${s.events.length} events`);
 check("A2 ask: charges 100 credits up front", start?.charged === 100 && start?.credits === 19900, `${start?.credits}`);
-check("A3 ask: shows the first step as checking what it knows", s.of("step")[0]?.id === "recall");
+// v5: Ask first works out where the market talks, then checks what it knows.
+check("A3 ask: first finds the market, then checks what it knows", s.of("step")[0]?.id === "map" && s.of("step").some((x) => x.id === "recall"), s.of("step").map((x) => x.id).join(","));
 check("A4 ask: brings evidence posts and content actions", s.one("evidence")?.posts?.length > 0 && s.one("actions")?.findingIds?.length > 0);
 const answer1 = s.of("text").map((e) => e.delta).join("");
 check("A5 ask: answer quotes sample sizes", /\d+ posts/.test(answer1), answer1.slice(0, 80));

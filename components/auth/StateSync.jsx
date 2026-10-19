@@ -45,6 +45,28 @@ const stripHeavy = (state) => {
   return out;
 };
 
+// The last signed-in writer, so signing out can save before it forgets.
+let flushNow = null;
+export async function flushState() {
+  try {
+    await flushNow?.();
+  } catch {
+    /* signing out goes ahead either way */
+  }
+}
+
+// Watchlists and their signals live on the server too; fold them in.
+async function pullWatchlists() {
+  try {
+    const res = await fetch("/api/watch", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    useStore.getState().mergeServer(data);
+  } catch {
+    /* the next load tries again */
+  }
+}
+
 export default function StateSync() {
   const { user, configured } = useSession();
   const loadedFor = useRef(null);
@@ -59,11 +81,15 @@ export default function StateSync() {
     let cancelled = false;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("user_state")
-        .select("state, version")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // A failed first read is retried: until it succeeds nothing is pushed,
+      // so a stale browser copy can never overwrite the account's.
+      let data = null;
+      let error = null;
+      for (let attempt = 0; attempt < 6 && !cancelled; attempt++) {
+        ({ data, error } = await supabase.from("user_state").select("state, version").eq("user_id", user.id).maybeSingle());
+        if (!error) break;
+        await new Promise((r) => setTimeout(r, Math.min(30000, 1500 * 2 ** attempt)));
+      }
       if (cancelled || error) return;
 
       const local = useStore.getState();
@@ -107,6 +133,7 @@ export default function StateSync() {
         });
         lastPushed.current = JSON.stringify(stripHeavy(useStore.getState()));
         loadedFor.current = user.id;
+        pullWatchlists();
         return;
       }
 
@@ -121,6 +148,7 @@ export default function StateSync() {
           .upsert({ user_id: user.id, state: payload, version: STATE_VERSION }, { onConflict: "user_id" });
         if (!upErr) lastPushed.current = json;
       }
+      pullWatchlists();
     })();
 
     return () => {
@@ -131,6 +159,17 @@ export default function StateSync() {
   // Push on change, debounced, only after the initial load has settled.
   useEffect(() => {
     if (!configured || !user) return undefined;
+    flushNow = async () => {
+      if (loadedFor.current !== user.id) return;
+      clearTimeout(timer.current);
+      const payload = stripHeavy(useStore.getState());
+      const json = JSON.stringify(payload);
+      if (json === lastPushed.current) return;
+      const supabase = getSupabaseBrowser();
+      if (!supabase) return;
+      const { error } = await supabase.from("user_state").upsert({ user_id: user.id, state: payload, version: STATE_VERSION }, { onConflict: "user_id" });
+      if (!error) lastPushed.current = json;
+    };
     const unsub = useStore.subscribe((state) => {
       if (loadedFor.current !== user.id) return;
       const payload = stripHeavy(state);
@@ -149,6 +188,7 @@ export default function StateSync() {
     return () => {
       unsub();
       clearTimeout(timer.current);
+      flushNow = null;
     };
   }, [configured, user]);
 

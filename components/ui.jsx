@@ -12,7 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, PresenceContext, motion, useReducedMotion } from "motion/react";
 import { Check, CircleNotch, Warning, X } from "@phosphor-icons/react";
 import { cx } from "../lib/cx";
 import Huesy from "./huesy/Huesy";
@@ -28,6 +28,14 @@ export { cx };
 export const SPRING = { type: "spring", bounce: 0, duration: 0.38 };
 export const SPRING_SOFT = { type: "spring", bounce: 0, duration: 0.5 };
 export const FADE = { duration: 0.18, ease: [0.22, 1, 0.36, 1] };
+
+// Keeps what's inside from holding up a parent's exit. A sliding pill
+// (layoutId) that has moved can hand its exit to a twin that is already gone,
+// so the exit never ends: a closed sheet stayed on the page as an invisible
+// wall that took every click.
+function ExitFree({ children }) {
+  return <PresenceContext.Provider value={null}>{children}</PresenceContext.Provider>;
+}
 
 /* ------------------------------------------------------------------ button --
    Radius lock: every button and chip is a pill. Cards are 20px, inputs 12px.
@@ -296,11 +304,13 @@ export function Segmented({ options, value, onChange, className, itemClassName, 
             )}
           >
             {on ? (
-              <motion.span
-                layoutId={`seg-${id}`}
-                transition={SPRING}
-                className="absolute inset-0 rounded-full bg-surface shadow-soft"
-              />
+              <ExitFree>
+                <motion.span
+                  layoutId={`seg-${id}`}
+                  transition={SPRING}
+                  className="absolute inset-0 rounded-full bg-surface shadow-soft"
+                />
+              </ExitFree>
             ) : null}
             <span className="relative">{o.label}</span>
           </button>
@@ -531,7 +541,9 @@ export function Tabs({ tabs, value, onChange, className }) {
             )}
           >
             {on ? (
-              <motion.span layoutId={`tab-${id}`} transition={SPRING} className="absolute inset-0 rounded-full bg-surface shadow-soft" />
+              <ExitFree>
+                <motion.span layoutId={`tab-${id}`} transition={SPRING} className="absolute inset-0 rounded-full bg-surface shadow-soft" />
+              </ExitFree>
             ) : null}
             <span className="relative">{t.label}</span>
           </button>
@@ -565,6 +577,11 @@ export function Sheet({ open, onClose, title, children, footer, width = 520, lab
   const reduced = useReducedMotion();
   const panelRef = useRef(null);
   const openerRef = useRef(null);
+  // Pages pass a new onClose on every render; reading it from a ref keeps the
+  // open setup (focus, scroll lock) from re-running and pulling the cursor
+  // back to the first field mid-typing.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -584,7 +601,7 @@ export function Sheet({ open, onClose, title, children, footer, width = 520, lab
     }, 60);
     if (!narrow) document.documentElement.style.setProperty("--sheet-offset", `${Math.min(width, window.innerWidth - 24) + 24}px`);
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeRef.current?.();
       if (e.key === "Tab" && panelRef.current) {
         const nodes = [...panelRef.current.querySelectorAll("a[href],button:not([disabled]),input,textarea,select,[tabindex]:not([tabindex='-1'])")];
         if (!nodes.length) return;
@@ -607,7 +624,7 @@ export function Sheet({ open, onClose, title, children, footer, width = 520, lab
       document.documentElement.style.removeProperty("--sheet-offset");
       openerRef.current?.focus?.();
     };
-  }, [open, onClose, narrow, width]);
+  }, [open, narrow, width]);
 
   const onDragEnd = useCallback(
     (_, info) => {
@@ -659,19 +676,22 @@ export function Sheet({ open, onClose, title, children, footer, width = 520, lab
             )}
             style={narrow ? undefined : { width: `min(${width}px, calc(100vw - 24px))` }}
           >
-            {narrow ? <div className="mx-auto mt-2.5 h-1.5 w-10 shrink-0 rounded-full bg-line-strong" aria-hidden="true" /> : null}
-            <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-3 pt-4 sm:px-6 sm:pt-5">
-              <div className="min-w-0 flex-1">{typeof title === "string" ? <h2 className="font-display text-[21px] leading-snug">{title}</h2> : title}</div>
-              <IconButton label="Close" onClick={onClose} data-sheet-close size={34} className="-mr-1.5">
-                <X size={16} weight="bold" />
-              </IconButton>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 sm:px-6">{children}</div>
-            {footer ? (
-              <div className="shrink-0 border-t border-line px-5 py-3.5 sm:px-6" style={{ paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
-                {footer}
+            {/* Only the panel and the scrim decide when a closing sheet is gone. */}
+            <ExitFree>
+              {narrow ? <div className="mx-auto mt-2.5 h-1.5 w-10 shrink-0 rounded-full bg-line-strong" aria-hidden="true" /> : null}
+              <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-3 pt-4 sm:px-6 sm:pt-5">
+                <div className="min-w-0 flex-1">{typeof title === "string" ? <h2 className="font-display text-[21px] leading-snug">{title}</h2> : title}</div>
+                <IconButton label="Close" onClick={onClose} data-sheet-close size={34} className="-mr-1.5">
+                  <X size={16} weight="bold" />
+                </IconButton>
               </div>
-            ) : null}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 sm:px-6">{children}</div>
+              {footer ? (
+                <div className="shrink-0 border-t border-line px-5 py-3.5 sm:px-6" style={{ paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
+                  {footer}
+                </div>
+              ) : null}
+            </ExitFree>
           </motion.div>
         </div>
       ) : null}

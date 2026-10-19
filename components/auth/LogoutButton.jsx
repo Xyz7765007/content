@@ -7,6 +7,7 @@ import { Button } from "../ui";
 import { useSession } from "./useSession";
 import { useStore } from "../../lib/store";
 import { useAccount } from "../../lib/account";
+import { flushState } from "./StateSync";
 
 // Signing out also clears this browser's copy of the brand, watchlists and
 // drafts. They are safe in the account, and the next person to use this
@@ -24,6 +25,8 @@ export default function LogoutButton({ variant = "ghost", className, size = "sm"
       loading={busy}
       onClick={async () => {
         setBusy(true);
+        // Save anything not yet saved before this browser's copy is cleared.
+        await flushState();
         await signOut();
         useStore.getState().resetLocal();
         useAccount.setState({ account: null, error: null, loadedAt: 0 });

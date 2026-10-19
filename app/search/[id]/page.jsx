@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, CheckSquare, DownloadSimple, Lightning, PencilSimple, Plus, X } from "@phosphor-icons/react";
 import AppShell from "../../../components/shell/AppShell";
@@ -24,6 +24,32 @@ export default function WatchlistPage() {
   const router = useRouter();
   const hydrated = useHydrated();
   const search = useStore((s) => s.searches.find((x) => x.id === id));
+  const mergeServer = useStore((s) => s.mergeServer);
+  const phase = useRuns((s) => s.runs[id]?.phase);
+
+  // Signals are saved on the server as they're found; bring in any this
+  // browser missed (another tab, another device, a closed window). A
+  // watchlist this browser has lost altogether is restored first, so a link
+  // to it never says "can't find" while the server still has it.
+  const [restoring, setRestoring] = useState(true);
+  const known = Boolean(search);
+  useEffect(() => {
+    if (!id || !hydrated || phase === "running") return undefined;
+    let gone = false;
+    fetch(known ? `/api/watch?search=${encodeURIComponent(id)}` : "/api/watch", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (gone || !data) return;
+        if (known) {
+          if (data.signals?.length) mergeServer({ signals: data.signals });
+        } else mergeServer(data);
+      })
+      .catch(() => {})
+      .finally(() => !gone && setRestoring(false));
+    return () => {
+      gone = true;
+    };
+  }, [id, hydrated, known, phase, mergeServer]);
   const brand = useStore((s) => s.brand);
   const setCompose = useStore((s) => s.setCompose);
   const run = useRuns((s) => s.runs[id]);
@@ -48,7 +74,7 @@ export default function WatchlistPage() {
   const running = run?.phase === "running";
   const freshCutoff = run?.startedAt || 0;
 
-  if (!hydrated) {
+  if (!hydrated || (!search && restoring)) {
     return (
       <AppShell title="Watchlist" back={{ href: "/search", label: "Watchlists" }}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

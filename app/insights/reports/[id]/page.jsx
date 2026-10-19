@@ -15,7 +15,7 @@ import { CostTag, GateNote } from "../../../../components/plan/PlanBits";
 import { BarChart, EvidenceStrip, Working } from "../../../../components/intel/IntelBits";
 import { getJson, sendJson } from "../../../../lib/stream";
 import { reportLabel } from "../../../../lib/intel/kinds";
-import { formatLabel, hookLabel, platformLabel } from "../../../../lib/intel/taxonomy";
+import { formatLabel, hookLabel, platformLabel, profileUrl } from "../../../../lib/intel/taxonomy";
 import { useReportRuns } from "../../../../lib/reportRunner";
 import { PRICES, setCredits, useAccountData } from "../../../../lib/account";
 import { compact, dayLabel } from "../../../../lib/when";
@@ -130,7 +130,7 @@ function ReportBody({ report, body, account, onAgain }) {
       <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="aurora grain relative overflow-hidden rounded-[24px] border border-line bg-surface p-6 sm:p-8">
         <div className="relative flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
           <Badge tone="neutral">{reportLabel(report.kind)}</Badge>
-          {report.params?.platform ? <span>{platformLabel(report.params.platform)}</span> : null}
+          {report.params?.platform ? <span>{report.params.platform === "all" ? "All platforms" : platformLabel(report.params.platform)}</span> : null}
           <span>{dayLabel(report.created_at)}</span>
           <span>{report.credits ? `${report.credits} credits` : "Free"}</span>
           {body?.sample ? <Badge tone="mist">Sample data</Badge> : null}
@@ -141,6 +141,12 @@ function ReportBody({ report, body, account, onAgain }) {
             <InlineMarkdown>{body?.summary}</InlineMarkdown>
           </p>
         </div>
+        {body?.read?.length ? (
+          <p className="relative mt-4 text-[12.5px] leading-relaxed text-muted">
+            <span className="font-medium text-ink/80">What I read: </span>
+            {body.read.slice(0, 6).map((r) => `${r.items.toLocaleString("en-US")} from ${r.label}`).join(" · ")}
+          </p>
+        ) : null}
         <div className="relative mt-6 flex flex-wrap gap-2">
           <Button as={Link} href={`/ask?q=${encodeURIComponent(`About my ${report.title}: `)}`} size="sm" variant="quiet">
             <ChatCircleDots size={15} />
@@ -195,7 +201,7 @@ function ReportBody({ report, body, account, onAgain }) {
         </section>
       ) : null}
 
-      {charts.hooks?.length || charts.formats?.length || charts.lengths?.length || charts.cadence?.length || charts.questions?.length ? (
+      {charts.hooks?.length || charts.formats?.length || charts.lengths?.length || charts.times?.length || charts.cadence?.length || charts.questions?.length || charts.topics?.length || charts.followers?.length ? (
         <section aria-labelledby="numbers" className="flex flex-col gap-3">
           <h2 id="numbers" className="font-display text-[22px]">
             The numbers
@@ -204,13 +210,16 @@ function ReportBody({ report, body, account, onAgain }) {
             <BarChart title="Reach by opening" note="How many times a typical post's reach each kind of opening gets" data={charts.hooks} />
             <BarChart title="Reach by format" data={charts.formats} />
             <BarChart title="Reach by length" data={charts.lengths} />
+            <BarChart title="Reach by posting time" note="Local time in your market" data={charts.times} />
             <BarChart title="Posts a week" data={charts.cadence} unit="/wk" />
             <BarChart title="What people ask most" data={charts.questions} unit="count" />
+            <BarChart title="Most talked-about this week" note="Accounts posting about each topic" data={charts.topics} unit="count" />
+            <BarChart title="Audience size" data={charts.followers} unit="count" />
           </div>
         </section>
       ) : null}
 
-      {report.kind === "competitors" ? <Competitors accounts={data.accounts} /> : null}
+      {report.kind === "competitors" ? (data.competitors ? <CompetitorCards competitors={data.competitors} /> : <Competitors accounts={data.accounts} />) : null}
       {report.kind === "creators" ? <Creators report={report} creators={data.creators || []} /> : null}
 
       {body?.sections?.length ? (
@@ -245,9 +254,9 @@ function Competitors({ accounts }) {
             ) : (
               <>
                 <dl className="grid grid-cols-3 gap-3">
-                  <Stat label="Followers" value={compact(a.followers) ?? "?"} />
-                  <Stat label="Posts a week" value={a.postsPerWeek ?? "?"} />
-                  <Stat label="Normal views" value={compact(a.normalViews) ?? compact(a.normalLikes) ?? "?"} />
+                  <Stat label="Followers" value={compact(a.followers) ?? "–"} />
+                  <Stat label="Posts a week" value={a.postsPerWeek ?? "–"} />
+                  <Stat label="Normal views" value={compact(a.normalViews) ?? compact(a.normalLikes) ?? "–"} />
                 </dl>
                 {a.hooks?.length ? (
                   <p className="text-[13px] text-muted">
@@ -257,6 +266,57 @@ function Competitors({ accounts }) {
                 <EvidenceStrip posts={a.breakouts} title="Their breakouts" />
               </>
             )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// One card per competitor: every platform they're on, the ads they run,
+// what reviewers say and how much they're talked about.
+function CompetitorCards({ competitors }) {
+  if (!competitors?.length) return null;
+  return (
+    <section aria-labelledby="competitors" className="flex flex-col gap-3">
+      <h2 id="competitors" className="font-display text-[22px]">
+        Competitor by competitor
+      </h2>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {competitors.map((c) => (
+          <article key={c.name} className="flex min-w-0 flex-col gap-4 rounded-[20px] border border-line bg-surface p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-[16px] font-medium">{c.name}</h3>
+              {c.website ? (
+                <a href={`https://${c.website}`} target="_blank" rel="noopener noreferrer" className="text-[12.5px] text-muted hover:underline">
+                  {c.website}
+                </a>
+              ) : null}
+            </div>
+            {(c.accounts || []).length ? (
+              <ul className="flex flex-col gap-2">
+                {c.accounts.map((a) => (
+                  <li key={a.platform} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[13.5px]">
+                    <span>
+                      <span className="font-medium">{platformLabel(a.platform)}</span>
+                      {a.account ? <span className="text-muted"> {a.account}</span> : null}
+                    </span>
+                    <span className="tabular text-[12.5px] text-muted">
+                      {a.note || [a.followers != null ? `${compact(a.followers)} followers` : null, a.postsPerWeek != null ? `${a.postsPerWeek}/wk` : null, a.normalViews != null ? `${compact(a.normalViews)} normal views` : a.normalLikes != null ? `${compact(a.normalLikes)} normal likes` : null].filter(Boolean).join(" · ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-muted">I couldn't confirm any of their accounts.</p>
+            )}
+            <dl className="grid grid-cols-3 gap-3 border-t border-line pt-3">
+              <Stat label="Ads running" value={c.ads?.running ?? 0} />
+              <Stat label="Reviews" value={c.reviews ? `${c.reviews.average}★` : "–"} />
+              <Stat label="Mentions, 30d" value={c.mentions?.last30Days ?? 0} />
+            </dl>
+            {c.notFound?.length ? <p className="text-[12px] text-muted">Not found on {c.notFound.map(platformLabel).join(", ")}.</p> : null}
+            <EvidenceStrip posts={(c.accounts || []).flatMap((a) => (a.breakouts || []).slice(0, 2))} title="What breaks out for them" />
           </article>
         ))}
       </div>
@@ -274,9 +334,9 @@ function Stat({ label, value }) {
 }
 
 function toCsv(creators) {
-  const cols = ["handle", "name", "followers", "engagement", "fit", "relevance", "lastPost", "location", "email", "url"];
+  const cols = ["platform", "handle", "name", "followers", "engagement", "fit", "relevance", "why", "lastPost", "location", "email", "url"];
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  return [cols.join(","), ...creators.map((c) => cols.map((k) => esc(k === "email" ? c.contact?.email : c[k])).join(","))].join("\n");
+  return [cols.join(","), ...creators.map((c) => cols.map((k) => esc(k === "email" ? c.contact?.email || c.email : c[k])).join(","))].join("\n");
 }
 
 function Creators({ report, creators: initial }) {
@@ -287,17 +347,33 @@ function Creators({ report, creators: initial }) {
   const checked = useMemo(() => creators.filter((c) => c.fit != null), [creators]);
   const rest = useMemo(() => creators.filter((c) => c.fit == null), [creators]);
 
-  const reveal = async (handle) => {
+  const reveal = async (handle, { quiet = false } = {}) => {
     setOpening(handle);
     const r = await sendJson("/api/intel/contact", { handle, reportId: report.id });
     setOpening(null);
     if (r.error) {
       toast(r.error.message, { duration: 6000 });
-      return;
+      return false;
     }
     if (r.credits != null) setCredits(r.credits);
-    setCreators((list) => list.map((c) => (c.handle === handle ? { ...c, contact: { found: r.found, email: r.email, phone: r.phone } } : c)));
-    if (!r.found) toast(`@${handle} doesn't publish a contact. No credits used.`);
+    setCreators((list) => list.map((c) => (c.handle === handle ? { ...c, contact: { found: r.found, email: r.email, phone: r.phone, website: r.website } } : c)));
+    if (!r.found && !quiet) toast(`@${handle} doesn't publish a contact. No credits used.`);
+    return true;
+  };
+
+  // The top ten without a contact yet, one after another.
+  const [bulk, setBulk] = useState(false);
+  const pending = creators.filter((c) => c.fit != null && !c.contact && !c.email).slice(0, 10);
+  const revealAll = async () => {
+    setBulk(true);
+    let found = 0;
+    for (const c of pending) {
+      const ok = await reveal(c.handle, { quiet: true });
+      if (!ok) break;
+      found += 1;
+    }
+    setBulk(false);
+    toast(`Checked ${found} creators. Only the contacts found were charged.`, { tone: "good" });
   };
 
   const download = () => {
@@ -319,10 +395,18 @@ function Creators({ report, creators: initial }) {
           </h2>
           <p className="mt-1 text-[13.5px] text-muted">Fit weighs how on-topic their recent posts are, how much their audience engages, and how recently they posted.</p>
         </div>
-        <Button size="sm" variant="quiet" onClick={download}>
-          <DownloadSimple size={15} />
-          Download CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {pending.length > 1 && (account?.credits ?? 0) >= PRICES.contact * pending.length ? (
+            <Button size="sm" variant="quiet" onClick={revealAll} loading={bulk} disabled={bulk || Boolean(opening)}>
+              Get the top {pending.length} contacts
+              <CostTag credits={PRICES.contact * pending.length} />
+            </Button>
+          ) : null}
+          <Button size="sm" variant="quiet" onClick={download}>
+            <DownloadSimple size={15} />
+            Download CSV
+          </Button>
+        </div>
       </div>
       <ul className="flex flex-col gap-2.5">
         {checked.map((c, i) => (
@@ -341,14 +425,15 @@ function Creators({ report, creators: initial }) {
               </span>
               <div className="min-w-0">
                 <p className="truncate text-[15px] font-medium">
-                  <a href={c.url || `https://www.instagram.com/${c.handle}/`} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                    @{c.handle}
+                  <a href={c.url || profileUrl(c.platform, c.handle)} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    {c.platform === "linkedin" ? c.name || c.handle : `@${c.handle}`}
                   </a>
-                  {c.name ? <span className="font-normal text-muted"> {c.name}</span> : null}
+                    {c.name && c.platform !== "linkedin" ? <span className="font-normal text-muted"> {c.name}</span> : null}
                 </p>
+                {c.why ? <p className="mt-0.5 text-[12.5px] text-ink/75">{c.why}</p> : null}
                 <p className="mt-0.5 text-[12.5px] text-muted">
                   {[
-                    `${compact(c.followers) ?? "?"} followers`,
+                    c.followers != null ? `${compact(c.followers)} followers` : null,
                     c.engagement != null ? `${c.engagement}% engagement` : null,
                     c.daysQuiet != null ? `posted ${c.daysQuiet === 0 ? "today" : `${c.daysQuiet}d ago`}` : null,
                     c.location,
@@ -359,7 +444,12 @@ function Creators({ report, creators: initial }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {c.contact?.found ? (
+              {!c.contact && c.email ? (
+                <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1.5 text-[13px] text-accent-deep hover:underline" title="Published in their bio">
+                  <Envelope size={14} />
+                  {c.email}
+                </a>
+              ) : c.contact?.found ? (
                 <span className="flex flex-wrap items-center gap-2 text-[13px]">
                   {c.contact.email ? (
                     <a href={`mailto:${c.contact.email}`} className="inline-flex items-center gap-1.5 text-accent-deep hover:underline">
@@ -376,16 +466,16 @@ function Creators({ report, creators: initial }) {
                 </span>
               ) : c.contact && !c.contact.found ? (
                 <span className="text-[12.5px] text-muted">No public contact</span>
-              ) : c.platform === "instagram" || !c.platform ? (
+              ) : (
                 (account?.credits ?? 0) < PRICES.contact ? (
                   <span className="text-[12.5px] text-muted">Needs {PRICES.contact} credits</span>
                 ) : (
-                  <Button size="sm" variant="quiet" onClick={() => reveal(c.handle)} loading={opening === c.handle} disabled={Boolean(opening)}>
+                  <Button size="sm" variant="quiet" onClick={() => reveal(c.handle)} loading={opening === c.handle} disabled={Boolean(opening) || bulk}>
                     Get contact
                     <CostTag credits={PRICES.contact} />
                   </Button>
                 )
-              ) : null}
+              )}
             </div>
           </motion.li>
         ))}

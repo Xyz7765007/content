@@ -6,7 +6,8 @@ import { PRICES } from "../../../../lib/plans";
 import { brandContext } from "../../../../lib/intel/brand";
 import { dataConnected } from "../../../../lib/intel/source";
 import { REPORT_KINDS, createReport, getReport, listReports, reportTitle, runReport, updateReport } from "../../../../lib/intel/reports";
-import { PLATFORM_IDS } from "../../../../lib/intel/brand";
+import { REPORTS } from "../../../../lib/intel/kinds";
+import { marketMap } from "../../../../lib/intel/market";
 
 export const maxDuration = 300;
 
@@ -33,18 +34,27 @@ export async function POST(req) {
     const FORMATS = ["reel", "carousel", "image", "video", "short", "text"];
     // Older callers sent one "focus": a format for playbooks, a topic otherwise.
     const legacy = String(p.focus || "").trim();
+    const allowed = REPORTS[kind].platforms || [];
+    const fallback = kind === "trends" ? "all" : allowed.includes(ctx.platforms[0]) ? ctx.platforms[0] : allowed[0] || null;
     params = {
-      platform: PLATFORM_IDS.includes(p.platform) ? p.platform : ctx.platforms[0],
+      platform: allowed.length ? (allowed.includes(p.platform) ? p.platform : fallback) : null,
       format: FORMATS.includes(p.format) ? p.format : FORMATS.includes(legacy) ? legacy : null,
       topic: String(p.topic || (FORMATS.includes(legacy) ? "" : legacy)).replace(/\s+/g, " ").trim().slice(0, 60) || null,
-      handles: (Array.isArray(p.handles) ? p.handles : []).map((h) => String(h).replace(/^@/, "").trim()).filter((h) => /^[\w.]{2,30}$/.test(h)).slice(0, 4),
+      // Competitors as names, @handles or links.
+      handles: (Array.isArray(p.handles) ? p.handles : [])
+        .map((h) => String(h).replace(/\s+/g, " ").trim().slice(0, 120))
+        .filter((h) => h.length >= 2 && /^[\p{L}\p{N}@._\-\s/:&'?=]+$/u.test(h))
+        .slice(0, 4),
       followers:
         p.followers && Number.isFinite(Number(p.followers.min)) && Number.isFinite(Number(p.followers.max))
           ? { min: Math.max(1000, Math.round(Number(p.followers.min))), max: Math.min(5000000, Math.round(Number(p.followers.max))) }
           : undefined,
     };
-    if (kind === "competitors" && !params.handles.length && !(ctx.competitors?.[params.platform] || ctx.competitors?.instagram)?.length) {
-      throw Object.assign(fail("bad_request", 400), { message: "Add at least one competitor's handle first." });
+    // A competitor report needs someone to compare: the ones named, or the
+    // market's own. Asked before anything is charged.
+    if (kind === "competitors" && !params.handles.length) {
+      const map = await marketMap(ctx, { user });
+      if (!(map.competitors || []).length) throw fail("no_competitors", 400);
     }
     price = kind === "creators" ? PRICES.creators : PRICES.report;
     if (kind !== "creators") free = await useWelcomeReport(user);

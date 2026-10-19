@@ -111,6 +111,7 @@ export function Briefing({ brand, targets, studio }) {
       </div>
     );
   }
+  if (b?.v === 2) return <BriefingV2 briefing={state.briefing} building={state.building} studio={studio} />;
   if (!b || (!b.moves?.length && !b.ideas?.length)) return null;
   const from = (b.findingIds || []).slice(0, 12).join(",");
   const shown = standouts(b);
@@ -168,6 +169,147 @@ export function Briefing({ brand, targets, studio }) {
         ) : null}
       </div>
       <EvidenceStrip posts={shown.posts} title={shown.title} className="mt-6" />
+    </section>
+  );
+}
+
+const PLATFORM_NAME = (id) => (id === "reddit" ? "Reddit" : platformLabel(id));
+
+// The weekly briefing across every platform where the market talks: what
+// moved, the posts taking off, the week's news, and what to post.
+function BriefingV2({ briefing, building, studio }) {
+  const b = briefing.body;
+  const platforms = b.platforms || [];
+  const [tab, setTab] = useState("all");
+  const here = tab === "all" ? platforms : platforms.filter((p) => p.platform === tab);
+  const moves = (b.moves || []).filter((m) => tab === "all" || !m.platform || m.platform === tab);
+  const hot = here.flatMap((p) => (p.hot || []).slice(0, tab === "all" ? 2 : 4));
+  const ideas = (b.ideas || []).filter((i) => tab === "all" || i.platform === tab);
+  const from = (b.findingIds || []).slice(0, 12).join(",");
+  if (!platforms.length && !b.news?.length) return null;
+
+  return (
+    <section aria-labelledby="briefing" className="rounded-[24px] border border-line bg-surface p-5 sm:p-7" data-briefing="v2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="briefing" className="font-display text-[22px]">
+          This week in your market
+        </h2>
+        <span className="flex items-center gap-2 text-[12.5px] text-muted">
+          {building ? "Refreshing…" : briefing.title}
+          {b.sample ? <Badge tone="mist">Sample data</Badge> : null}
+        </span>
+      </div>
+      <p className="mt-1 text-[13px] text-muted">
+        From {b.posts.toLocaleString("en-US")} posts on {platforms.map((p) => PLATFORM_NAME(p.platform)).join(", ") || "your platforms"}
+        {b.news?.length ? ` and ${b.news.length} news stories` : ""} in the last 7 days{b.thin ? ", an early read" : ""}. Free, every week.
+      </p>
+      {platforms.length > 1 ? (
+        <div role="tablist" aria-label="Platforms" className="no-scrollbar -mx-1 mt-4 flex gap-1.5 overflow-x-auto px-1">
+          {[{ id: "all", label: "All" }, ...platforms.map((p) => ({ id: p.platform, label: `${PLATFORM_NAME(p.platform)}${p.posts ? ` ${p.posts}` : ""}` }))].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={cx(
+                "shrink-0 rounded-full border px-3 py-1.5 text-[13px] transition-colors",
+                tab === t.id ? "border-ink bg-ink text-canvas" : "border-line bg-surface text-muted hover:border-line-strong hover:text-ink"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-5 grid gap-6 lg:grid-cols-2">
+        <div className="flex flex-col gap-5">
+          {moves.length ? (
+            <div>
+              <h3 className="mb-2.5 text-[13px] font-medium text-muted">What's moving</h3>
+              <ul className="flex flex-col gap-2.5">
+                {moves.map((m, i) => {
+                  const Icon = MOVE_ICON[m.kind] || ChartLineUp;
+                  return (
+                    <motion.li key={`${tab}-${i}`} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ ...SPRING, delay: i * 0.05 }} className="flex items-start gap-3 text-[14.5px] leading-snug">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-deep">
+                        <Icon size={14} weight="bold" aria-hidden="true" />
+                      </span>
+                      {m.text}
+                    </motion.li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+          {tab !== "all"
+            ? here.map((p) => (
+                <div key={p.platform} className="flex flex-col gap-3">
+                  {p.topics?.length ? (
+                    <div>
+                      <h3 className="mb-2 text-[13px] font-medium text-muted">Most talked about</h3>
+                      <ul className="flex flex-wrap gap-1.5">
+                        {p.topics.map((t) => (
+                          <li key={t.topic} className="rounded-full border border-line bg-sunken px-2.5 py-1 text-[12.5px]">
+                            {t.topic} <span className="text-muted">· {t.accounts} accounts</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {p.hashtags?.length ? (
+                    <p className="text-[13px] text-muted">
+                      <span className="font-medium text-ink/80">{p.hashtags.some((h) => h.growthPct != null) ? "Rising tags: " : "Most used tags: "}</span>
+                      {p.hashtags.map((h) => `#${h.tag}${h.growthPct != null ? ` (${h.growthPct > 0 ? "+" : ""}${h.growthPct}%)` : h.posts ? ` (${h.posts})` : ""}`).join(", ")}
+                    </p>
+                  ) : null}
+                  {p.sounds?.length ? (
+                    <p className="text-[13px] text-muted">
+                      <span className="font-medium text-ink/80">Sounds: </span>
+                      {p.sounds.map((x) => `"${x.title}"${x.commercial === false ? " (not for brand accounts)" : ""}`).join(", ")}
+                    </p>
+                  ) : null}
+                  {p.note ? <p className="text-[12.5px] text-muted">{p.note}</p> : null}
+                  {!p.posts && !p.hashtags?.length ? <p className="text-[13px] text-muted">Quiet week here: little new in your niche.</p> : null}
+                </div>
+              ))
+            : null}
+          {ideas.length ? (
+            <div>
+              <h3 className="mb-2.5 text-[13px] font-medium text-muted">Worth posting</h3>
+              <ul className="flex flex-col gap-2.5">
+                {ideas.map((idea, i) => (
+                  <li key={i} className="flex flex-col gap-1 rounded-2xl bg-sunken px-3.5 py-3">
+                    <span className="font-display text-[16.5px] leading-snug">{idea.title}</span>
+                    <span className="text-[12.5px] text-muted">{idea.why}</span>
+                    <Link href={studio ? `/studio/${idea.type}?topic=${encodeURIComponent(idea.title)}${from ? `&from=${from}` : ""}` : "/plans"} className="mt-1 self-start text-[12.5px] font-medium text-accent-deep underline decoration-accent-line underline-offset-2">
+                      {studio ? `Make it as a ${STUDIO_TYPES[idea.type]?.label.toLowerCase() || "post"}` : "Make it with Studio"}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+        {tab === "all" && b.news?.length ? (
+          <div>
+            <h3 className="mb-2.5 text-[13px] font-medium text-muted">In the news</h3>
+            <ul className="flex flex-col gap-2.5">
+              {b.news.map((n) => (
+                <li key={n.url} className="text-[14px] leading-snug">
+                  <a href={n.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    {n.title}
+                  </a>
+                  <span className="mt-0.5 block text-[12px] text-muted">
+                    {[n.source, n.date].filter(Boolean).join(" · ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+      <EvidenceStrip posts={hot} title="Taking off this week" className="mt-6" />
     </section>
   );
 }

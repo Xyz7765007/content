@@ -74,7 +74,8 @@ if (PHASE === "all" || PHASE === "today") {
   const { ctx, page } = await open();
   await page.goto(`${BASE}/home`, { waitUntil: "networkidle" });
   check("T1 Today offers the free first playbook", await visible(page.getByRole("button", { name: /Make my playbook/ })));
-  check("T2 Today shows the weekly briefing", await visible(page.getByText(/This week on /), 20000));
+  // v5: the briefing covers every platform where the market talks.
+  check("T2 Today shows the weekly briefing", await visible(page.getByText(/This week in your market|This week on /), 20000));
   check("T3 Today has quick actions to every flow", await visible(page.getByRole("link", { name: "Ask a question" })) && (await page.getByRole("link", { name: /Request a reel/ }).count()) > 0);
   await shot(page, "T-today");
   await page.getByRole("button", { name: /Make my playbook/ }).click();

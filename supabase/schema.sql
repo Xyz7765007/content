@@ -419,3 +419,40 @@ revoke all on function public.spend_today(uuid) from public, anon, authenticated
 -- Upload limits enforced by storage itself, whatever the browser declares.
 update storage.buckets set file_size_limit = 209715200, allowed_mime_types = array['image/jpeg','image/png','image/webp','video/mp4','video/quicktime'] where id = 'uploads';
 update storage.buckets set file_size_limit = 209715200, allowed_mime_types = array['video/mp4','video/quicktime'] where id = 'reels';
+
+-- ------------------------------------------------------------------ v5 --
+-- Added 2026-10-19: watchlists kept on the server. A watchlist's settings and
+-- every signal it finds are written here by the server as they are found, so
+-- a closed tab, a second device or a sign-out can never lose a result.
+-- Additive only.
+create table if not exists public.watchlists (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  id         text not null,
+  name       text,
+  config     jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  primary key (user_id, id)
+);
+
+create table if not exists public.watch_signals (
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  search_id    text not null,
+  signal_key   text not null,
+  data         jsonb not null,
+  found_at     timestamptz not null default now(),
+  dismissed_at timestamptz,
+  primary key (user_id, search_id, signal_key)
+);
+create index if not exists watch_signals_recent on public.watch_signals (user_id, search_id, found_at desc);
+
+do $$
+declare t text;
+begin
+  foreach t in array array['watchlists','watch_signals'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "owner reads own rows" on public.%I', t);
+    execute format('create policy "owner reads own rows" on public.%I for select to authenticated using (auth.uid() = user_id)', t);
+  end loop;
+end $$;

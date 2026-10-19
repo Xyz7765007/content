@@ -6,7 +6,7 @@ import { PRICES } from "../../../../lib/plans";
 import { creatorContact } from "../../../../lib/intel/tools";
 import { getReport, updateReport } from "../../../../lib/intel/reports";
 
-// A creator's public contact (20 credits), refunded when they publish none.
+// A creator's contact on any platform (20 credits), refunded when none is found.
 // Opened from a creator report, the contact is kept on the report, so it is
 // never paid for twice.
 export async function POST(req) {
@@ -15,19 +15,24 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => null);
     const handle = String(body?.handle || "").replace(/^@/, "").trim();
-    if (!/^[\w.]{2,30}$/.test(handle)) throw fail("bad_request", 400);
+    if (!/^[\w.-]{2,60}$/.test(handle)) throw fail("bad_request", 400);
     ({ user } = await requireMember("any"));
     const report = body.reportId ? await getReport(user, body.reportId) : null;
     const creators = report?.body?.data?.creators || [];
+    // The platform comes from the report when there is one, so it can't be spoofed.
+    const fromReport = creators.find((c) => String(c.handle).toLowerCase() === handle.toLowerCase());
+    const platform = fromReport?.platform || report?.body?.data?.platform || (["instagram", "tiktok", "youtube", "x", "linkedin"].includes(body?.platform) ? body.platform : "instagram");
+    const url = fromReport?.url || null;
+    const name = fromReport?.name || null;
     const index = creators.findIndex((c) => String(c.handle).toLowerCase() === handle.toLowerCase());
     const known = index >= 0 ? creators[index].contact : null;
     if (known) return NextResponse.json({ handle, ...known, credits: null, kept: true });
 
     let balance = await spendCredits(user, "contact", { ref: handle });
     charged = true;
-    const contact = await creatorContact({ handle }, { user });
+    const contact = await creatorContact({ platform, handle, url, name }, { user });
     const found = Boolean(contact?.found && (contact.email || contact.phone));
-    const result = found ? { found: true, email: contact.email || null, phone: contact.phone || null } : { found: false };
+    const result = found ? { found: true, email: contact.email || null, emails: (contact.emails || []).slice(0, 3), phone: contact.phone || null, website: contact.website || null } : { found: false, website: contact?.website || null };
     if (!found) {
       balance = (await refundCredits(user, PRICES.contact, "contact", handle)) ?? balance;
       charged = false;
