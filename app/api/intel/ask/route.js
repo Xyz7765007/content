@@ -51,6 +51,10 @@ export async function POST(req) {
       isNew = true;
     }
     history = await listMessages(user, thread.id, 40);
+    // The same question still being answered (a reload or a second tab keeps
+    // the first one running): never start, or charge for, it twice.
+    const last = history[history.length - 1];
+    if (last?.role === "user" && String(last.content || "").trim() === question && Date.now() - new Date(last.created_at || 0).getTime() < 4 * 60 * 1000) throw fail("busy", 409);
     balance = await spendCredits(user, "ask", { ref: thread.id });
   } catch (err) {
     if (isNew && thread) await deleteThread(user, thread.id).catch(() => {});

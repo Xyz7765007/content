@@ -14,7 +14,7 @@ import { ruleMap, platformsFor } from "../../../lib/intel/market.js";
 import { brandContext } from "../../../lib/intel/brand.js";
 import { composeBriefing } from "../../../lib/intel/briefing.js";
 import { _test as W } from "../../../lib/intel/watch.js";
-import { _test as A } from "../../../lib/intel/agent.js";
+import { _test as A, answerScreen } from "../../../lib/intel/agent.js";
 import { nameMatches } from "../../../lib/intel/accounts.js";
 import { isTheirAd, marketWords, pickPage, topicTerms } from "../../../lib/intel/tools.js";
 import { isTheirProduct } from "../../../lib/intel/reviews.js";
@@ -190,6 +190,34 @@ t("a competitor's ads are only the ones its own page runs or that link to its si
   assert.equal(isTheirAd({ advertiser: null, domain: "plumgoodness.com" }, { advertiser: "Plum Goodness", website: "plumgoodness.com" }), true);
   assert.equal(isTheirAd({ advertiser: null, link: "https://shop.plumgoodness.com/x?utm=1" }, { advertiser: "Plum Goodness", website: "https://www.plumgoodness.com/" }), true);
   assert.equal(isTheirAd({ advertiser: null, link: "https://notplumgoodness.com/" }, { advertiser: "Plum Goodness", website: "plumgoodness.com" }), false);
+});
+
+t("an answer written before offering a report stays on screen and is what's saved; thinking out loud is taken back", () => {
+  // The live case, 19 Oct: the full fashion-trends answer was wiped when the trend radar was offered after it,
+  // and only "The trend radar above would cover..." was saved and charged.
+  const sent = [];
+  const s = answerScreen((e) => sent.push(e));
+  s.newTurn();
+  s.tool("search_news");
+  s.newTurn();
+  s.text("Here's what's new in fashion this week: ");
+  s.text("quiet luxury is cooling.");
+  s.tool("propose");
+  s.newTurn();
+  s.text("You can run the trend radar below.");
+  assert.equal(sent.filter((e) => e.t === "retract").length, 0);
+  assert.equal(s.answer, "Here's what's new in fashion this week: quiet luxury is cooling.\n\nYou can run the trend radar below.");
+  assert.equal(sent.filter((e) => e.t === "text").map((e) => e.delta).join(""), s.answer);
+  // Words before a data call are narration: taken back on screen and never saved.
+  const sent2 = [];
+  const t2 = answerScreen((e) => sent2.push(e));
+  t2.newTurn();
+  t2.text("Let me check the news first.");
+  t2.tool("search_news");
+  t2.newTurn();
+  t2.text("Two launches this week.");
+  assert.equal(sent2.filter((e) => e.t === "retract").length, 1);
+  assert.equal(t2.answer, "Two launches this week.");
 });
 
 t("a brand's ad page is the one with its Instagram, not another business with the same name", () => {

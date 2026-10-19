@@ -87,7 +87,7 @@ export function InlineMarkdown({ children }) {
 export default function Markdown({ children, className }) {
   const parsed = blocks(children);
   return (
-    <div className={cx("md flex flex-col gap-3 text-[15px] leading-relaxed text-ink/90", className)}>
+    <div className={cx("md flex flex-col gap-3 text-[15px] leading-relaxed text-ink/90 [overflow-wrap:anywhere]", className)}>
       {parsed.map((b, i) => {
         if (b.type === "h") return <h4 key={i} className="mt-2 text-[14.5px] font-semibold text-ink first:mt-0">{inline(b.text, i)}</h4>;
         if (b.type === "ul")

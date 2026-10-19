@@ -203,6 +203,19 @@ await fresh("tier2");
   check("K3 the answer lands with linked, dated items", await visible(page.locator("main").getByRole("link").filter({ hasText: /\w/ }).nth(2), 30000));
   check("K4 no data provider named", !VENDORS.test(await page.locator("main").innerText()));
   await shot(page, "K-ask");
+  // 19 Oct, live: after a reload mid-answer the question sat there unanswered, so it was
+  // asked (and paid for) again. Opened elsewhere while it's written, it says it's coming.
+  await page.goto(`${BASE}/ask`, { waitUntil: "networkidle" });
+  await page.fill("#ask-input", "what's trending this week #slow");
+  await page.keyboard.press("Enter");
+  await page.waitForURL(/\/ask\?t=/, { timeout: 15000 });
+  const other = await open();
+  await other.page.goto(page.url(), { waitUntil: "networkidle" });
+  check("K5 a conversation opened while its answer is written says it's coming", await visible(other.page.getByText("Still answering this question"), 8000));
+  check("K6 and it can't be asked again meanwhile", (await other.page.getByRole("button", { name: /^Ask\b/ }).count()) === 0 && (await other.page.getByRole("button", { name: "Stop" }).isDisabled({ timeout: 3000 }).catch(() => false)));
+  check("K7 then the answer appears there by itself", await visible(other.page.locator("main").getByText(/100 credits|Free/).first(), 30000) && !(await other.page.getByText("Still answering this question").isVisible().catch(() => false)));
+  await shot(other.page, "K-waiting-done");
+  await other.ctx.close();
   await ctx.close();
 }
 

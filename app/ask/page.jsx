@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { ClockCounterClockwise, NotePencil, Trash } from "@phosphor-icons/react";
+import { CircleNotch, ClockCounterClockwise, NotePencil, Trash } from "@phosphor-icons/react";
 import AppShell from "../../components/shell/AppShell";
 import Huesy from "../../components/huesy/Huesy";
 import { Appear, Button, IconButton, SPRING, Sheet, Skeleton, cx, toast } from "../../components/ui";
@@ -48,10 +48,16 @@ function Ask() {
   const [error, setError] = useState(null);
   const [listOpen, setListOpen] = useState(false);
   const [runningProposal, setRunningProposal] = useState(null);
+  // A question in this conversation still being answered elsewhere (a reload
+  // or another tab while it was being written): its answer is on its way.
+  const [waiting, setWaiting] = useState(false);
   const abortRef = useRef(null);
   const inputRef = useRef(null);
   const bottomRef = useRef(null);
   const liveThread = useRef(null);
+  // Set the moment a question is sent, before the screen updates, so a quick
+  // second Enter can't send (and charge) it twice.
+  const sending = useRef(false);
 
   const loadThreads = useCallback(async () => {
     const r = await getJson("/api/intel/threads");
@@ -91,6 +97,25 @@ function Ask() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
 
+  // The last question has no answer yet and was asked in the last few
+  // minutes: it is still being written. Say so, and show it when it lands,
+  // so nobody asks (and pays) twice.
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    const pending = !live && threadId && last?.role === "user" && last.created_at && Date.now() - new Date(last.created_at).getTime() < 4 * 60 * 1000;
+    setWaiting(Boolean(pending));
+    if (!pending) return undefined;
+    let tries = 0;
+    const t = setInterval(async () => {
+      tries += 1;
+      const r = await getJson(`/api/intel/threads?id=${threadId}`);
+      const list = r.messages || [];
+      if (!r.error && list[list.length - 1]?.role === "assistant") setMessages(list);
+      else if (tries >= 50) setWaiting(false);
+    }, 5000);
+    return () => clearInterval(t);
+  }, [messages, live, threadId]);
+
   useEffect(() => {
     if (prefill && !draft) setDraft(prefill);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,7 +131,7 @@ function Ask() {
 
   const ask = async (text) => {
     const question = String(text ?? draft).trim();
-    if (!question || live) return;
+    if (!question || live || waiting || sending.current) return;
     setError(null);
     if (SMALL_TALK.test(question)) {
       setDraft("");
@@ -126,6 +151,7 @@ function Ask() {
 
     const ac = new AbortController();
     abortRef.current = ac;
+    sending.current = true;
     setDraft("");
     const state = { question, steps: [], text: "", evidence: null, proposal: null, findingIds: null, sample: false, note: null, credits: PRICES.ask, threadId };
     setLive({ ...state });
@@ -166,12 +192,15 @@ function Ask() {
           // A dropped connection after the answer started: it may still have
           // finished and been saved, so say so and offer to look.
           if (e.code === "network" && current.started) setError({ code: "dropped", message: "The connection dropped while I was answering. If I finished, the answer is saved in this conversation." });
+          // Already being answered: nothing was charged; look again shows the answer once it lands.
+          else if (e.code === "busy") setError({ code: "dropped", message: e.message });
           else setError({ code: e.code, message: e.message });
         }
       },
       ac.signal
     );
     abortRef.current = null;
+    sending.current = false;
 
     if (res.ok) {
       const done = current;
@@ -364,6 +393,12 @@ function Ask() {
                     </Appear>
                   )
                 )}
+                {waiting ? (
+                  <p className="flex items-center gap-2 text-[13.5px] text-muted sm:pl-[42px]" role="status">
+                    <CircleNotch size={14} weight="bold" className="animate-spin" aria-hidden="true" />
+                    Still answering this question. The answer will appear here.
+                  </p>
+                ) : null}
                 {live ? (
                   <>
                     <UserBubble>{live.question}</UserBubble>
@@ -411,7 +446,7 @@ function Ask() {
               onChange={setDraft}
               onSend={() => ask()}
               onStop={stop}
-              busy={Boolean(live)}
+              busy={Boolean(live) || waiting}
               stoppable={Boolean(live?.started)}
               disabled={!ready}
               price={PRICES.ask}

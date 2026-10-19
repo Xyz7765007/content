@@ -130,6 +130,22 @@ const dates = datesIn(answer);
 check("N3 ask: every dated item is from the last 14 days (no old news as 'latest')", dates.length >= 3 && dates.every((d) => Date.now() - d <= 15 * DAY), `${dates.length} dates`);
 check("N4 ask: no data provider is named anywhere in steps or answer", !VENDORS.test(JSON.stringify(steps)) && !VENDORS.test(answer));
 
+// 19 Oct, live: an answer that looked lost was asked again, and both runs were charged.
+// The same question, still being answered in its conversation, is refused, free.
+{
+  const thread = s.one?.("start")?.threadId;
+  const credit = async () => (await rest(`accounts?user_id=eq.${UID}&select=credits`))?.[0]?.credits;
+  const slow = "what's trending this week #slow";
+  const first = stream("/api/intel/ask", { question: slow, threadId: thread, brand, targets });
+  await new Promise((r) => setTimeout(r, 1500));
+  const before = await credit();
+  const again = await stream("/api/intel/ask", { question: slow, threadId: thread, brand, targets });
+  const after = await credit();
+  check("N5 asking the same question again while it's answered is refused and free", again.status === 409 && again.body?.error?.code === "busy" && after === before, `${again.status} ${again.body?.error?.code}; credits ${before} -> ${after}`);
+  const done = await first;
+  check("N6 and the first answer still lands", Boolean(done.one?.("done")));
+}
+
 /* -------------------------------------------- #1 playbook on X: measured */
 s = await stream("/api/intel/report", { kind: "playbook", params: { platform: "x" }, brand, targets });
 let rid = s.one?.("start")?.reportId;
