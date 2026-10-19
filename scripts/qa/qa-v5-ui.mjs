@@ -157,6 +157,36 @@ await fresh("tier2");
   check("B4 a platform tab shows what's talked about there", await visible(page.getByText(/Most talked about|Quiet week here|Most used tags|Rising tags/)));
   check("B5 posts taking off are shown without 'x a typical post'", !(await page.locator("[data-briefing=v2]").innerText()).includes("a typical post"));
   await shot(page, "B-today");
+  // 19 Oct, live: "it still shows what moved on linkedin ... how do i get to customise it?"
+  await page.getByRole("button", { name: "Change platforms" }).click();
+  const pickSheet = page.getByRole("dialog", { name: "Platforms in your briefing" });
+  check("B6 the briefing's platforms can be changed right there", await visible(pickSheet) && (await pickSheet.getByRole("group", { name: "Platforms" }).getByRole("button").count()) === 6);
+  for (const name of ["Instagram", "TikTok", "YouTube", "X", "LinkedIn", "Reddit"]) {
+    const chip = pickSheet.getByRole("button", { name, exact: true });
+    const on = (await chip.getAttribute("aria-pressed")) === "true";
+    if (on !== ["Instagram", "Reddit"].includes(name)) await chip.click();
+  }
+  await pickSheet.getByRole("button", { name: /Save and refresh/ }).click();
+  await page.waitForTimeout(1500);
+  await page.getByText("Refreshing…").waitFor({ state: "hidden", timeout: 60000 }).catch(() => {});
+  const tabNames = (await page.getByRole("tablist", { name: "Platforms" }).getByRole("tab").allInnerTexts()).map((t) => t.replace(/\s*\d+$/, ""));
+  check("B7 it then reads exactly the platforms picked", tabNames.includes("Instagram") && tabNames.includes("Reddit") && !tabNames.some((t) => ["TikTok", "LinkedIn", "X", "YouTube"].includes(t)), tabNames.join(", "));
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Change platforms" }).click();
+  const pressed = await page.getByRole("dialog", { name: "Platforms in your briefing" }).getByRole("button", { pressed: true }).allInnerTexts();
+  check("B8 and remembers them", pressed.length === 2 && pressed.includes("Instagram") && pressed.includes("Reddit"), pressed.join(", "));
+  await closeSheet(page);
+  await shot(page, "B-today-picked");
+  await ctx.close();
+}
+
+/* --------------------- 3b: a briefing in the old one-platform shape is rebuilt */
+{
+  await rest(`intel_reports?user_id=eq.${UID}&kind=eq.briefing`, { method: "DELETE" });
+  await rest("intel_reports", { method: "POST", body: JSON.stringify({ user_id: UID, kind: "briefing", title: "Week of 18 Oct", status: "ready", credits: 0, params: { platform: "linkedin" }, body: { platform: "linkedin", posts: 10, moves: [{ kind: "format", text: "Text posts lead on LinkedIn this week." }], ideas: [], evidence: [], sample: true } }) });
+  const { ctx, page } = await open();
+  await page.goto(`${BASE}/home`, { waitUntil: "networkidle" });
+  check("B9 last week's one-platform briefing is replaced by the market-wide one (live, 19 Oct)", await visible(page.getByRole("heading", { name: "This week in your market" }), 60000) && !(await page.getByRole("heading", { name: /This week on LinkedIn/ }).isVisible().catch(() => false)));
   await ctx.close();
 }
 

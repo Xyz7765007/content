@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { ArrowRight, ChatCircleDots, ChartLineUp, Clock, Lightning, Sparkle } from "@phosphor-icons/react";
-import { Badge, Button, SPRING, Skeleton, cx } from "../ui";
+import { Badge, Button, Chip, SPRING, Sheet, Skeleton, cx } from "../ui";
 import Huesy from "../huesy/Huesy";
 import { CostTag } from "../plan/PlanBits";
 import { TYPE_ICONS } from "../studio/StudioBits";
@@ -17,6 +17,7 @@ import { STUDIO_TYPES } from "../../lib/studio/options";
 import { platformLabel } from "../../lib/intel/taxonomy";
 import { standouts } from "../../lib/intel/standouts";
 import { ago } from "../../lib/when";
+import { useStore } from "../../lib/store";
 
 /* ------------------------------------------------------------- plan state -- */
 
@@ -74,9 +75,63 @@ export function FirstPlaybook({ onRun, platform }) {
 
 const MOVE_ICON = { trend: ChartLineUp, sound: Sparkle, interest: ChartLineUp, format: Lightning };
 
+// The platforms a weekly briefing can read (the week's news is always in).
+const PICKABLE = ["instagram", "tiktok", "youtube", "x", "linkedin", "reddit"];
+const PICK_MAX = 5;
+
+function BriefingPlatforms({ open, current, onClose, onSave }) {
+  const [list, setList] = useState(current);
+  useEffect(() => {
+    if (open) setList(current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const toggle = (id) => setList((l) => (l.includes(id) ? l.filter((x) => x !== id) : l.length >= PICK_MAX ? l : [...l, id]));
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Platforms in your briefing"
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[12.5px] text-muted">{list.length ? `${list.length} of ${PICK_MAX} picked` : "Pick at least one"}</span>
+          <Button onClick={() => onSave(list)} disabled={!list.length}>
+            Save and refresh
+            <CostTag free />
+          </Button>
+        </div>
+      }
+    >
+      <p className="text-[14px] leading-relaxed text-muted">Pick where your market talks, up to {PICK_MAX}. Each week I read what moved on each one, plus the week's news.</p>
+      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Platforms">
+        {PICKABLE.map((id) => (
+          <Chip key={id} selected={list.includes(id)} onClick={() => toggle(id)} disabled={!list.includes(id) && list.length >= PICK_MAX}>
+            {platformLabel(id)}
+          </Chip>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
 export function Briefing({ brand, targets, studio }) {
   const [state, setState] = useState({ loading: true, briefing: null, building: false });
   const tried = useRef(false);
+  const setBrand = useStore((s) => s.setBrand);
+  const [picking, setPicking] = useState(false);
+  const [note, setNote] = useState(null);
+  const chosen = brand?.intel?.briefingPlatforms || [];
+
+  // New platforms picked: saved to the brand (so every week uses them) and the briefing rebuilt now.
+  const change = async (list) => {
+    setPicking(false);
+    setNote(null);
+    setBrand((b) => ({ intel: { ...(b.intel || {}), briefingPlatforms: list } }));
+    setState((s) => ({ ...s, building: true }));
+    const r = await sendJson("/api/intel/briefing", { brand: slimBrand({ ...brand, intel: { ...(brand.intel || {}), briefingPlatforms: list } }), targets, platforms: list, refresh: true });
+    setState((s) => ({ ...s, building: false, briefing: r.briefing || s.briefing }));
+    if (r.limited) setNote(r.message);
+    else if (r.error) setNote(r.error.message);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -90,7 +145,7 @@ export function Briefing({ brand, targets, studio }) {
       setState({ loading: false, briefing: r.briefing, building: !r.fresh });
       if (!r.fresh && !tried.current) {
         tried.current = true;
-        const b = await sendJson("/api/intel/briefing", { brand: slimBrand(brand), targets });
+        const b = await sendJson("/api/intel/briefing", { brand: slimBrand(brand), targets, platforms: chosen });
         if (!alive) return;
         setState({ loading: false, briefing: b.briefing || r.briefing, building: false });
       }
@@ -111,7 +166,15 @@ export function Briefing({ brand, targets, studio }) {
       </div>
     );
   }
-  if (b?.v === 2) return <BriefingV2 briefing={state.briefing} building={state.building} studio={studio} />;
+  if (b?.v === 2) {
+    const current = b.asked || (b.platforms || []).map((p) => p.platform);
+    return (
+      <>
+        <BriefingV2 briefing={state.briefing} building={state.building} studio={studio} onPick={() => setPicking(true)} note={note} />
+        <BriefingPlatforms open={picking} current={current.filter((p) => PICKABLE.includes(p))} onClose={() => setPicking(false)} onSave={change} />
+      </>
+    );
+  }
   if (!b || (!b.moves?.length && !b.ideas?.length)) return null;
   const from = (b.findingIds || []).slice(0, 12).join(",");
   const shown = standouts(b);
@@ -177,7 +240,7 @@ const PLATFORM_NAME = (id) => (id === "reddit" ? "Reddit" : platformLabel(id));
 
 // The weekly briefing across every platform where the market talks: what
 // moved, the posts taking off, the week's news, and what to post.
-function BriefingV2({ briefing, building, studio }) {
+function BriefingV2({ briefing, building, studio, onPick, note }) {
   const b = briefing.body;
   const platforms = b.platforms || [];
   const [tab, setTab] = useState("all");
@@ -201,8 +264,14 @@ function BriefingV2({ briefing, building, studio }) {
       </div>
       <p className="mt-1 text-[13px] text-muted">
         From {b.posts.toLocaleString("en-US")} posts on {platforms.map((p) => PLATFORM_NAME(p.platform)).join(", ") || "your platforms"}
-        {b.news?.length ? ` and ${b.news.length} news stories` : ""} in the last 7 days{b.thin ? ", an early read" : ""}. Free, every week.
+        {b.news?.length ? ` and ${b.news.length} news stories` : ""} in the last 7 days{b.thin ? ", an early read" : ""}. Free, every week.{" "}
+        {onPick ? (
+          <button type="button" onClick={onPick} disabled={building} className="font-medium text-accent-deep underline decoration-accent-line underline-offset-2 hover:decoration-accent-deep disabled:opacity-50">
+            Change platforms
+          </button>
+        ) : null}
       </p>
+      {note ? <p className="mt-2 text-[13px] text-muted" role="status">{note}</p> : null}
       {platforms.length > 1 ? (
         <div role="tablist" aria-label="Platforms" className="no-scrollbar -mx-1 mt-4 flex gap-1.5 overflow-x-auto px-1">
           {[{ id: "all", label: "All" }, ...platforms.map((p) => ({ id: p.platform, label: `${PLATFORM_NAME(p.platform)}${p.posts ? ` ${p.posts}` : ""}` }))].map((t) => (

@@ -220,6 +220,13 @@ t("an answer written before offering a report stays on screen and is what's save
   assert.equal(t2.answer, "Two launches this week.");
 });
 
+t("the briefing names topics the way the market says them, not as squashed hashtags", () => {
+  const per = [{ platform: "instagram", n: 30, topics: [{ topic: "skincareroutine", accounts: 7, posts: 25 }, { topic: "spf", accounts: 3, posts: 4 }], hot: [], hashtags: [], sounds: [] }];
+  const body = composeBriefing({ ctx: { niche: "skincare", keywords: ["sunscreen"] }, map: { terms: ["skincare routine", "sunscreen India"] }, per });
+  assert.deepEqual(body.platforms[0].topics.map((t) => t.topic), ["skincare routine", "spf"]);
+  assert.ok(body.moves[0].text.includes("skincare routine"), body.moves[0].text);
+});
+
 t("a brand's ad page is the one with its Instagram, not another business with the same name", () => {
   // Real ad-library results, 19 Oct: "Plum Goodness" finds tiny regional pages; "Plum" finds a bank and the brand.
   const pages = [

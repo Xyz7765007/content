@@ -214,6 +214,18 @@ check("B1 briefing (complaint 6): covers several platforms, not just one", bb.v 
 check("B2 briefing: has the week's news", (bb.news || []).length >= 1);
 check("B4 briefing news is about the market: off-topic stories are dropped (complaint 9)", (bb.news || []).every((n) => !/Northwind/.test(n.title)));
 check("B3 briefing: never compares a week's posts to 'typical'", (bb.platforms || []).every((p) => (p.hot || []).every((h) => h.lift == null && h.beat == null)));
+// 19 Oct, live: "how do i get to customise it?" Picked platforms rebuild it at once, and only those are read.
+b = await post("/api/intel/briefing", { brand, targets, platforms: ["reddit", "instagram"], refresh: true });
+let pb = b.body?.briefing?.body || {};
+check("B5 picked platforms rebuild the briefing with exactly those", JSON.stringify([...(pb.asked || [])].sort()) === JSON.stringify(["instagram", "reddit"]) && (pb.platforms || []).every((p) => ["instagram", "reddit"].includes(p.platform)), JSON.stringify(pb.asked));
+const firstId = b.body?.briefing?.id;
+b = await post("/api/intel/briefing", { brand, targets, platforms: ["instagram", "reddit"], refresh: true });
+check("B6 the same picks again don't rebuild it", b.body?.briefing?.id === firstId && b.body?.fresh === true);
+b = await post("/api/intel/briefing", { brand, targets, platforms: ["x", "instagram", "made-up"], refresh: true });
+check("B7 unknown platforms are ignored", JSON.stringify([...(b.body?.briefing?.body?.asked || [])].sort()) === JSON.stringify(["instagram", "x"]));
+await post("/api/intel/briefing", { brand, targets, platforms: ["tiktok"], refresh: true });
+b = await post("/api/intel/briefing", { brand, targets, platforms: ["youtube"], refresh: true });
+check("B8 a few changes a day at most: then it says when", b.body?.limited === true && /tomorrow/.test(b.body?.message || ""), JSON.stringify(b.body?.message));
 
 /* ----------------------------------- #8, #9 watchlists: sources + kept safe */
 const searchId = `qa-v5-${Date.now().toString(36)}`;
