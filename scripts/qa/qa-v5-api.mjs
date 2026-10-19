@@ -178,6 +178,7 @@ rep = (await get(`/api/intel/report?id=${s.one?.("start")?.reportId}`)).body?.re
 d = rep?.body?.data || {};
 const comps = d.competitors || [];
 check("K1 competitors (complaint 3): names, @handles and links all accepted", comps.length === 3, comps.map((c) => c.name).join(", "));
+check("K5 each competitor links to its ad library page and its accounts", comps.every((c) => /^https:\/\/www\.facebook\.com\/ads\/library\//.test(c.ads?.library || "") && (c.accounts || []).filter((a) => !a.note).every((a) => /^https?:\/\//.test(a.url || ""))), JSON.stringify(comps.map((c) => [c.ads?.library?.slice(0, 50), (c.accounts || []).map((a) => a.url)])).slice(0, 300));
 check("K2 competitors: read on more than Instagram and TikTok", new Set(comps.flatMap((c) => (c.accounts || []).map((a) => a.platform))).size >= 2, [...new Set(comps.flatMap((c) => (c.accounts || []).map((a) => a.platform)))].join(", "));
 check("K3 competitors: ads, reviews and mentions are part of it", comps.every((c) => c.ads && "running" in c.ads && c.mentions && "last30Days" in c.mentions) && comps.some((c) => c.ads.running > 0) && comps.some((c) => c.mentions.last30Days > 0));
 s = await stream("/api/intel/report", { kind: "competitors", params: {}, brand, targets });
@@ -189,6 +190,10 @@ rep = (await get(`/api/intel/report?id=${s.one?.("start")?.reportId}`)).body?.re
 d = rep?.body?.data || {};
 check("V1 audience voice (complaint 5): listens in several places", Object.keys(d.bySource || {}).length >= 3 && d.read >= 40, `${d.read} lines from ${JSON.stringify(d.bySource)}`);
 check("V2 audience voice: counts questions, pains and objections", d.questions?.length >= 1 && d.pains?.length >= 1 && Array.isArray(d.objections));
+// 19 Oct, live: "there were no back links like links to the actual posts".
+const grouped = [...(d.questions || []), ...(d.pains || []), ...(d.desires || []), ...(d.objections || [])];
+check("V3 every question, pain, want and objection links to where it was said", grouped.length >= 4 && grouped.every((it) => (it.examples || []).length >= 1 && it.examples.every((x) => /^https?:\/\//.test(x.url))), `${grouped.filter((it) => !(it.examples || []).length).length} of ${grouped.length} without a link`);
+check("V4 and its write-up doesn't repeat those lists", !(rep?.body?.sections || []).some((x) => /^(top questions|frustrations|what they want|objections to answer)$/i.test(x.title)), (rep?.body?.sections || []).map((x) => x.title).join(", "));
 
 /* ------------------------------------- #4 creators on every platform + contacts */
 const creatorsOn = async (platform) => {

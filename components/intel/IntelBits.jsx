@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUpRight, Check, CircleNotch, Warning } from "@phosphor-icons/react";
 import { SPRING, cx } from "../ui";
 import Huesy from "../huesy/Huesy";
-import { formatLabel, hookLabel, platformLabel } from "../../lib/intel/taxonomy";
+import { formatLabel, hookLabel, platformLabel, sourceCta } from "../../lib/intel/taxonomy";
 import { ago, compact, times } from "../../lib/when";
 
 /* ------------------------------------------------------------------ steps --
@@ -53,6 +53,66 @@ export const withStep = (steps, step) => {
   return next;
 };
 
+/* ------------------------------------------------------------ source link --
+   Where something came from, as a link that says where it goes: "View on
+   Instagram", "Read on Reddit", "Read on The Economic Times". Every piece of
+   intel carries one.
+----------------------------------------------------------------------------- */
+
+export function SourceLink({ url, platform, source, label, pill = false, className }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className={cx(
+        "inline-flex items-center gap-1 font-medium text-accent-deep",
+        pill ? "min-h-8 rounded-full border border-accent-line px-3 text-[12.5px] transition-colors hover:bg-accent-soft" : "text-[12.5px] hover:underline",
+        className
+      )}
+    >
+      {label || sourceCta({ url, platform, source })}
+      <ArrowUpRight size={pill ? 12 : 11} weight="bold" aria-hidden="true" />
+    </a>
+  );
+}
+
+// Several sources for one thing: the first one named, the rest numbered.
+export function SourceLinks({ items, className }) {
+  const list = (items || []).filter((x) => x?.url).slice(0, 4);
+  if (!list.length) return null;
+  return (
+    <div className={cx("flex flex-wrap items-center gap-x-3 gap-y-1", className)}>
+      {list.map((x, i) => (
+        <SourceLink key={x.url} url={x.url} platform={x.platform} source={x.source} label={i === 0 ? null : `${i + 1}`} />
+      ))}
+    </div>
+  );
+}
+
+// News stories, two columns on wide screens, each saying where it reads.
+export function NewsList({ items, className }) {
+  const list = (items || []).filter((n) => n?.url && n.title);
+  if (!list.length) return null;
+  return (
+    <ul className={cx("grid gap-x-8 gap-y-3 md:grid-cols-2", className)}>
+      {list.map((n) => (
+        <li key={n.url} className="min-w-0 text-[14px] leading-snug">
+          <a href={n.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            {n.title}
+          </a>
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-muted">
+            <SourceLink url={n.url} source={n.source} />
+            {n.date ? <span>{n.date}</span> : null}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /* --------------------------------------------------------------- evidence --
    A real post behind a claim: who, what, how it did, and a link to it.
 ----------------------------------------------------------------------------- */
@@ -95,6 +155,10 @@ export function EvidencePost({ post, className }) {
           ) : null}
           {post.views != null ? <span className="tabular">{compact(post.views)} views</span> : post.likes != null ? <span className="tabular">{compact(post.likes)} likes</span> : null}
           {post.hook ? <span>{hookLabel(post.hook)}</span> : null}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[12.5px] font-medium text-accent-deep group-hover:underline">
+          {sourceCta({ platform: post.platform, url: post.url })}
+          <ArrowUpRight size={11} weight="bold" aria-hidden="true" />
         </span>
       </span>
     </a>
@@ -309,6 +373,12 @@ export function FindingCard({ finding, actions, className }) {
         <span className={cx(stale && "text-faint")}>{finding.fetched_at ? ago(finding.fetched_at) : ""}</span>
       </div>
       <p className="text-[14.5px] leading-snug text-ink">{finding.statement}</p>
+      {(finding.evidence || []).some((e) => e?.url) ? (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
+          <span>Seen in</span>
+          <SourceLinks items={finding.evidence} />
+        </div>
+      ) : null}
       {actions ? <div className="mt-auto flex flex-wrap gap-2 pt-1">{actions}</div> : null}
     </article>
   );

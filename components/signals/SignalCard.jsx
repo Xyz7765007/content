@@ -3,6 +3,7 @@
 import { ArrowUpRight, BookmarkSimple, Check, PencilSimpleLine } from "@phosphor-icons/react";
 import { Badge, Button, cx } from "../ui";
 import { hasSourceLink, hostOf, relativeDay, resolveSignalUrl } from "../../lib/parse";
+import { sourceCta } from "../../lib/intel/taxonomy";
 
 /**
  * One market signal: what happened, why it matters for this brand, and the
@@ -63,15 +64,18 @@ export default function SignalCard({
             <span className="inline-flex flex-wrap items-center gap-x-1.5">
               <span aria-hidden="true">·</span>
               <span>also on</span>
-              {signal.sources.slice(1, 4).map((x, i) =>
-                x.url ? (
+              {signal.sources.slice(1, 4).map((x, i, list) => {
+                // Two posts on the same platform read "TikTok, TikTok 2", not the same word twice.
+                const nth = list.slice(0, i + 1).filter((y) => y.label === x.label).length;
+                const label = nth > 1 ? `${x.label} ${nth}` : x.label;
+                return x.url ? (
                   <a key={i} href={x.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline decoration-line-strong underline-offset-2 hover:text-accent-deep">
-                    {x.label}
+                    {label}
                   </a>
                 ) : (
-                  <span key={i}>{x.label}</span>
-                )
-              )}
+                  <span key={i}>{label}</span>
+                );
+              })}
             </span>
           ) : null}
           {signal.sample ? <Badge tone="mist">Sample</Badge> : null}
@@ -144,14 +148,15 @@ export default function SignalCard({
               {saved ? "Saved" : "Save"}
             </Button>
           ) : null}
+          {/* Where it came from, said on the button: "Read on The Economic Times", "View on Instagram". */}
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-full px-1.5 text-[12.5px] text-muted transition-colors hover:text-accent-deep"
-            title={linked ? "Open the original" : "This signal came without a link. Search the news for it."}
+            className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-full border border-accent-line px-3 text-[12.5px] font-medium text-accent-deep transition-colors hover:bg-accent-soft"
+            title={linked ? host : "This signal came without a link. Search the news for it."}
           >
-            {linked ? host || "Source" : "Find this story"}
+            {linked ? sourceCta({ source: signal.source, url }) : "Find this story"}
             <ArrowUpRight size={12} weight="bold" />
           </a>
         </div>

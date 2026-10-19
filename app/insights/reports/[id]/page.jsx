@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { ArrowClockwise, ChatCircleDots, DownloadSimple, Envelope, LockSimple, Phone } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowUpRight, ChatCircleDots, DownloadSimple, Envelope, LockSimple, Phone } from "@phosphor-icons/react";
 import AppShell from "../../../../components/shell/AppShell";
 import InsightsNav from "../../../../components/insights/InsightsNav";
 import { NewReportSheet } from "../../../../components/insights/NewReport";
@@ -12,7 +12,7 @@ import Huesy from "../../../../components/huesy/Huesy";
 import Markdown, { InlineMarkdown } from "../../../../components/Markdown";
 import { Badge, Button, ErrorNote, SPRING, Skeleton, cx, toast } from "../../../../components/ui";
 import { CostTag, GateNote } from "../../../../components/plan/PlanBits";
-import { BarChart, EvidenceStrip, Working } from "../../../../components/intel/IntelBits";
+import { BarChart, EvidenceStrip, NewsList, SourceLink, Working } from "../../../../components/intel/IntelBits";
 import { getJson, sendJson } from "../../../../lib/stream";
 import { reportLabel } from "../../../../lib/intel/kinds";
 import { formatLabel, hookLabel, platformLabel, profileUrl } from "../../../../lib/intel/taxonomy";
@@ -221,10 +221,19 @@ function ReportBody({ report, body, account, onAgain }) {
 
       {report.kind === "competitors" ? (data.competitors ? <CompetitorCards competitors={data.competitors} /> : <Competitors accounts={data.accounts} />) : null}
       {report.kind === "creators" ? <Creators report={report} creators={data.creators || []} /> : null}
+      {report.kind === "audience" ? <VoiceBoard data={data} /> : null}
+      {report.kind === "trends" && data.news?.length ? (
+        <section aria-labelledby="news" className="rounded-[20px] border border-line bg-surface p-5 sm:p-6">
+          <h2 id="news" className="font-display mb-3 text-[19px]">
+            In the news
+          </h2>
+          <NewsList items={data.news} />
+        </section>
+      ) : null}
 
       {body?.sections?.length ? (
         <section className="flex flex-col gap-3">
-          {body.sections.map((s, i) => (
+          {body.sections.filter((s) => !(report.kind === "audience" && VOICE_LISTED.test(s.title || "")) && !(report.kind === "trends" && data.news?.length && /^in the news$/i.test(s.title || ""))).map((s, i) => (
             <article key={i} className="rounded-[20px] border border-line bg-surface p-5 sm:p-6">
               <h3 className="font-display mb-3 text-[19px]">{s.title}</h3>
               <Markdown>{s.body}</Markdown>
@@ -275,6 +284,106 @@ function Competitors({ accounts }) {
 
 // One card per competitor: every platform they're on, the ads they run,
 // what reviewers say and how much they're talked about.
+/* ------------------------------------------------- audience, in their words --
+   Every question, frustration, want and objection with how often it came up,
+   where, and links to the posts and comments that said it.
+------------------------------------------------------------------------------ */
+
+const VOICE_GROUPS = [
+  ["questions", "Top questions"],
+  ["pains", "Frustrations"],
+  ["desires", "What they want"],
+  ["objections", "Objections to answer"],
+];
+// Older reports also wrote these lists out; the board shows them, linked.
+const VOICE_LISTED = /^(top questions|frustrations|what they want|objections to answer)$/i;
+
+// The quote is shown only when it says more than the line above it.
+const squash = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const fromLine = (from) => {
+  const parts = Object.entries(from || {}).sort((a, b) => b[1] - a[1]);
+  return parts.length ? ` · ${parts.map(([src, n]) => `${src} ${n}`).join(", ")}` : "";
+};
+
+function VoiceItem({ item }) {
+  const links = item.examples?.length ? item.examples : item.example ? [item.example] : [];
+  const named = {};
+  return (
+    <li className="min-w-0">
+      <p className="text-[14.5px] leading-snug text-ink">{item.text}</p>
+      <p className="mt-0.5 text-[12px] text-muted">
+        {item.count} {item.count === 1 ? "mention" : "mentions"}
+        {fromLine(item.from)}
+      </p>
+      {links[0]?.text && !squash(links[0].text).startsWith(squash(item.text)) ? (
+        <p className="mt-1.5 border-l-2 border-line-strong pl-2.5 text-[13px] italic leading-snug text-ink/75">"{links[0].text}"</p>
+      ) : null}
+      {links.length ? (
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+          {links.map((l, j) => {
+            named[l.src] = (named[l.src] || 0) + 1;
+            return (
+              <a key={j} href={l.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-[12.5px] font-medium text-accent-deep hover:underline">
+                {j === 0 ? `Read on ${l.src}` : `${l.src}${named[l.src] > 1 ? ` ${named[l.src]}` : ""}`}
+                <ArrowUpRight size={11} weight="bold" aria-hidden="true" />
+              </a>
+            );
+          })}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function VoiceBoard({ data }) {
+  const groups = VOICE_GROUPS.map(([key, title]) => ({ key, title, items: (data[key] || []).slice(0, 6) })).filter((g) => g.items.length);
+  const threads = (data.threads || []).filter((t) => t.url).slice(0, 6);
+  if (!groups.length && !threads.length) return null;
+  return (
+    <section aria-labelledby="voice" className="flex flex-col gap-3">
+      <div>
+        <h2 id="voice" className="font-display text-[22px]">
+          In their own words
+        </h2>
+        <p className="mt-1 text-[13.5px] text-muted">
+          From {data.read ? `${data.read} ` : ""}posts, comments and reviews. Each one links to where it was said.
+        </p>
+      </div>
+      {/* Balanced columns: a short list doesn't leave a gap beside a long one. */}
+      <div className="gap-3 lg:columns-2">
+        {groups.map((g) => (
+          <article key={g.key} className="mb-3 min-w-0 break-inside-avoid rounded-[20px] border border-line bg-surface p-5">
+            <h3 className="mb-3 text-[15.5px] font-medium">{g.title}</h3>
+            <ul className="flex flex-col gap-4">
+              {g.items.map((it, i) => (
+                <VoiceItem key={i} item={it} />
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+      {threads.length ? (
+        <article className="min-w-0 rounded-[20px] border border-line bg-surface p-5">
+          <h3 className="mb-3 text-[15.5px] font-medium">Threads worth reading</h3>
+          <ul className="grid gap-x-6 gap-y-2.5 md:grid-cols-2">
+            {threads.map((t, i) => (
+              <li key={i} className="min-w-0">
+                <a href={t.url} target="_blank" rel="noopener noreferrer" className="text-[14px] font-medium leading-snug text-ink hover:underline">
+                  {t.title}
+                </a>
+                <p className="text-[12px] text-muted">
+                  {[t.where, t.comments != null ? `${compact(t.comments)} comments` : null].filter(Boolean).join(" · ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </article>
+      ) : null}
+    </section>
+  );
+}
+
 function CompetitorCards({ competitors }) {
   if (!competitors?.length) return null;
   return (
@@ -297,9 +406,16 @@ function CompetitorCards({ competitors }) {
               <ul className="flex flex-col gap-2">
                 {c.accounts.map((a) => (
                   <li key={a.platform} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[13.5px]">
-                    <span>
+                    <span className="min-w-0">
                       <span className="font-medium">{platformLabel(a.platform)}</span>
-                      {a.account ? <span className="text-muted"> {a.account}</span> : null}
+                      {a.account && a.url ? (
+                        <a href={a.url} target="_blank" rel="noopener noreferrer" className="ml-1 inline-flex items-center gap-0.5 text-accent-deep hover:underline">
+                          {a.account}
+                          <ArrowUpRight size={11} weight="bold" aria-hidden="true" />
+                        </a>
+                      ) : a.account ? (
+                        <span className="text-muted"> {a.account}</span>
+                      ) : null}
                     </span>
                     <span className="tabular text-[12.5px] text-muted">
                       {a.note || [a.followers != null ? `${compact(a.followers)} followers` : null, a.postsPerWeek != null ? `${a.postsPerWeek}/wk` : null, a.normalViews != null ? `${compact(a.normalViews)} normal views` : a.normalLikes != null ? `${compact(a.normalLikes)} normal likes` : null].filter(Boolean).join(" · ")}
@@ -315,6 +431,14 @@ function CompetitorCards({ competitors }) {
               <Stat label="Reviews" value={c.reviews ? `${c.reviews.average}★` : "–"} />
               <Stat label="Mentions, 30d" value={c.mentions?.last30Days ?? 0} />
             </dl>
+            {/* Every number above, one click from where it came from. */}
+            {c.ads?.library || c.mentions?.examples?.[0]?.url || c.reviews?.complaints?.find((r) => r.url) ? (
+              <div className="-mt-1 flex flex-wrap gap-x-4 gap-y-1.5">
+                <SourceLink url={c.ads?.library} label="See their ads" />
+                <SourceLink url={c.mentions?.examples?.[0]?.url} label={`Latest mention (${c.mentions?.examples?.[0]?.type === "news" ? "news" : platformLabel(c.mentions?.examples?.[0]?.type)})`} />
+                <SourceLink url={c.reviews?.complaints?.find((r) => r.url)?.url} label="Read their reviews" />
+              </div>
+            ) : null}
             {c.notFound?.length ? <p className="text-[12px] text-muted">Not found on {c.notFound.map(platformLabel).join(", ")}.</p> : null}
             <EvidenceStrip posts={(c.accounts || []).flatMap((a) => (a.breakouts || []).slice(0, 2))} title="What breaks out for them" />
           </article>
@@ -441,6 +565,7 @@ function Creators({ report, creators: initial }) {
                     .filter(Boolean)
                     .join(", ")}
                 </p>
+                <SourceLink url={c.url || profileUrl(c.platform, c.handle)} platform={c.platform} className="mt-1" />
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">

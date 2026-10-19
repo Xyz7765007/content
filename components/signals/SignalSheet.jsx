@@ -8,6 +8,7 @@ import Huesy from "../huesy/Huesy";
 import { useStore } from "../../lib/store";
 import { isBusy, useWriting, write } from "../../lib/writer";
 import { hasSourceLink, hostOf, relativeDay, resolveSignalUrl } from "../../lib/parse";
+import { sourceCta } from "../../lib/intel/taxonomy";
 
 const ALL = ["instagram", "linkedin", "twitter", "email"];
 
@@ -89,9 +90,9 @@ export default function SignalSheet({ signal, open, onClose, autoWrite = false, 
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-[13px] text-muted transition-colors hover:text-accent-deep"
+            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-accent-line px-3.5 text-[13px] font-medium text-accent-deep transition-colors hover:bg-accent-soft"
           >
-            {linked ? `Read on ${hostOf(url) || "the source"}` : "Find this story"}
+            {linked ? sourceCta({ source: signal.source, url }) : "Find this story"}
             <ArrowUpRight size={13} weight="bold" />
           </a>
         </div>

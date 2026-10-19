@@ -128,6 +128,9 @@ await fresh("tier2");
   check("R2 each card counts ads, reviews and mentions", await visible(page.getByText("Ads running")) && (await page.getByText("Mentions, 30d").count()) > 0);
   check("R3 the report says what it read", await visible(page.getByText(/What I read:/)));
   check("R4 no data provider named on the page", !VENDORS.test(await page.locator("main").innerText()));
+  // 19 Oct, live: "many signals, many intel that should have the source links with a clearer cta".
+  check("L9 the side-by-side comparison is a real table, not pipes", (await page.locator("main table").count()) >= 1 && !(await page.locator("main").innerText()).includes("|---|"));
+  check("L1 each competitor links to its ads, accounts and mentions", (await page.getByRole("link", { name: /^See their ads/ }).count()) >= 1 && (await page.locator("main article a[href^='http']").count()) >= 4);
   await shot(page, "R-competitors");
   await page.goto(`${BASE}/insights`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: /Creator shortlist/ }).first().click();
@@ -138,9 +141,43 @@ await fresh("tier2");
   const getOne = page.getByRole("button", { name: /^Get contact/ }).first();
   check("R6 every creator can be enriched, not just Instagram's (complaint 4)", await visible(getOne));
   check("R7 the top ten can be enriched in one go", await visible(page.getByRole("button", { name: /Get the top \d+ contacts/ })));
+  check("L2 every creator says where to see them", (await page.getByRole("link", { name: /^View on X/ }).count()) >= 3);
   await getOne.click();
   check("R8 enrichment shows an email (complaint 4: it never worked before)", await visible(page.locator("main").getByRole("link", { name: /@.*\.example/ }), 20000));
   await shot(page, "R-creators-x");
+  await ctx.close();
+}
+
+/* --------------------------------- 2a: trend radar and what I know, linked */
+{
+  const { ctx, page } = await open();
+  await page.goto(`${BASE}/insights`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Trend radar/ }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: /Run report/ }).click();
+  await page.waitForURL(/\/insights\/reports\//, { timeout: 20000 });
+  check("L6 the trend radar lists its news, each saying where it reads", await visible(page.getByRole("heading", { name: "In the news" }), 60000) && (await page.locator("section[aria-labelledby=news]").getByRole("link", { name: /^Read (on|the story)/ }).count()) >= 2);
+  check("L7 its standout posts say where to see them", (await page.getByText(/^(View on|Watch on|Read on) /).count()) >= 2);
+  await shot(page, "L-trends");
+  await page.goto(`${BASE}/insights/knowledge`, { waitUntil: "networkidle" });
+  check("L8 what Huesy knows links to the posts it learned from", await visible(page.getByText("Seen in").first(), 15000));
+  await shot(page, "L-knowledge");
+  await ctx.close();
+}
+
+/* ---------------------------------------- 2b: audience voice, linked back */
+{
+  const { ctx, page } = await open();
+  await page.goto(`${BASE}/insights`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Audience voice/ }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: /Run report/ }).click();
+  await page.waitForURL(/\/insights\/reports\//, { timeout: 20000 });
+  // 19 Oct, live: "there were no back links like links to the actual posts".
+  check("A1 audience voice shows what people said, in their own words", await visible(page.getByRole("heading", { name: "In their own words" }), 60000));
+  const reads = page.getByRole("link", { name: /^Read on / });
+  const first = await reads.first().getAttribute("href").catch(() => null);
+  check("A2 each line links to the post or comment it came from", (await reads.count()) >= 4 && /^https?:\/\//.test(first || ""), `${await reads.count()} links, first ${first}`);
+  check("A3 the lists aren't written out twice", (await page.getByRole("heading", { name: "Top questions" }).count()) === 1);
+  await shot(page, "A-audience");
   await ctx.close();
 }
 
@@ -153,6 +190,8 @@ await fresh("tier2");
   const tabs = page.getByRole("tablist", { name: "Platforms" }).getByRole("tab");
   check("B2 there is a tab per platform", (await tabs.count()) >= 3, `${await tabs.count()} tabs`);
   check("B3 the week's news is there", await visible(page.getByRole("heading", { name: "In the news" })));
+  check("L3 each story says where it reads", (await page.locator("[data-briefing=v2]").getByRole("link", { name: /^Read (on|the story)/ }).count()) >= 2);
+  check("L4 each post taking off says where to see it", (await page.locator("[data-briefing=v2]").getByText(/^(View on|Watch on|Read on) /).count()) >= 1);
   await tabs.nth(1).click();
   check("B4 a platform tab shows what's talked about there", await visible(page.getByText(/Most talked about|Quiet week here|Most used tags|Rising tags/)));
   check("B5 posts taking off are shown without 'x a typical post'", !(await page.locator("[data-briefing=v2]").innerText()).includes("a typical post"));
@@ -205,6 +244,7 @@ await fresh("tier2");
   const searchId = page.url().split("/").pop();
   check("W2 the check finds signals", await visible(page.locator("article").first(), 60000));
   check("W3 a move seen in several places links each of them", await visible(page.getByText("also on"), 20000));
+  check("L5 every signal has a clear link to its source", (await page.locator("article").count()) > 0 && (await page.locator("article").count()) === (await page.locator("article").getByRole("link", { name: /^(Read on|View on|Watch on|Read the story|Find this story)/ }).count()), `${await page.locator("article").count()} signals`);
   await shot(page, "W-signals");
   // Lose this browser's copy entirely, as a sign-out on another device could.
   // The account's real copy is kept and put back afterwards.

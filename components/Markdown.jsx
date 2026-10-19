@@ -5,7 +5,7 @@ import { cx } from "../lib/cx";
 
 /**
  * The small slice of markdown Huesy writes: paragraphs, ### headings, bullet
- * and numbered lists, **bold**, *italic* and [links](https://…). Built as
+ * and numbered lists, | tables |, **bold**, *italic* and [links](https://…). Built as
  * React elements, never as HTML, so nothing in an answer can run as code.
  * Links open in a new tab and only http(s) addresses become links.
  */
@@ -31,11 +31,16 @@ function inline(text, key = "i") {
   });
 }
 
+// "| a | b |" -> ["a", "b"]
+const cells = (line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+const RULE = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/;
+
 function blocks(src) {
   const lines = String(src || "").replace(/\r/g, "").split("\n");
   const out = [];
   let para = [];
   let list = null;
+  let table = null;
   const flushPara = () => {
     if (para.length) out.push({ type: "p", text: para.join(" ") });
     para = [];
@@ -44,12 +49,29 @@ function blocks(src) {
     if (list) out.push(list);
     list = null;
   };
-  for (const raw of lines) {
+  const flushTable = () => {
+    if (table) out.push(table);
+    table = null;
+  };
+  for (const [n, raw] of lines.entries()) {
     const line = raw.trimEnd();
     const trimmed = line.trim();
     if (!trimmed) {
       flushPara();
       flushList();
+      flushTable();
+      continue;
+    }
+    // A table: a "| head |" row, a "|---|" rule, then "| cell |" rows.
+    if (table && trimmed.startsWith("|")) {
+      if (!RULE.test(trimmed)) table.rows.push(cells(trimmed));
+      continue;
+    }
+    flushTable();
+    if (trimmed.startsWith("|") && RULE.test(String(lines[n + 1] || "").trim())) {
+      flushPara();
+      flushList();
+      table = { type: "table", head: cells(trimmed), rows: [] };
       continue;
     }
     const heading = trimmed.match(/^(#{1,4})\s+(.*)$/);
@@ -76,6 +98,7 @@ function blocks(src) {
   }
   flushPara();
   flushList();
+  flushTable();
   return out;
 }
 
@@ -110,6 +133,33 @@ export default function Markdown({ children, className }) {
                 </li>
               ))}
             </ol>
+          );
+        if (b.type === "table")
+          return (
+            <div key={i} className="-mx-1 overflow-x-auto px-1">
+              <table className="w-full border-collapse text-left text-[13.5px] [overflow-wrap:normal]">
+                <thead>
+                  <tr className="border-b border-line-strong">
+                    {b.head.map((h, j) => (
+                      <th key={j} scope="col" className="whitespace-nowrap py-2 pr-4 font-medium text-muted">
+                        {inline(h, `${i}-h${j}`)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {b.rows.map((r, j) => (
+                    <tr key={j} className="border-b border-line last:border-0">
+                      {b.head.map((_, k) => (
+                        <td key={k} className={cx("py-2 pr-4 align-top", k === 0 ? "font-medium text-ink" : "tabular")}>
+                          {inline(r[k] ?? "", `${i}-${j}-${k}`)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           );
         return <p key={i}>{inline(b.text, i)}</p>;
       })}
