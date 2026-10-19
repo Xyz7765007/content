@@ -11,7 +11,7 @@
 // the two Google variables out to set the URLs alone.
 
 const REF = process.env.SUPABASE_PROJECT_ID || "jkbwjciulqzzteviqpoq";
-const SITE = process.env.HUESY_SITE_URL || "https://huesy.vercel.app";
+const SITE = process.env.HUESY_SITE_URL || "https://www.huesy.app";
 const TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
 
 if (!TOKEN) {
@@ -26,6 +26,10 @@ if (!TOKEN) {
 const REDIRECTS = [
   `${SITE}/auth/callback`,
   `${SITE}/**`,
+  // Every address Huesy answers on: the app's own, the bare domain, and Vercel's.
+  "https://app.huesy.app/**",
+  "https://huesy.app/**",
+  "https://huesy.vercel.app/**",
   "https://huesy-*-xyz7765007s-projects.vercel.app/auth/callback",
   "https://content-engine-two-pink.vercel.app/auth/callback",
   "https://content-engine-two-pink.vercel.app/**",

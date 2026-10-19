@@ -17,7 +17,21 @@ const matches = (path, list) => list.some((p) => path === p || path.startsWith(`
 // configured, so local mode is untouched.
 const ACCOUNT_PAGES = ["/login", "/signup", "/waitlist", "/reset-password"];
 
+// The app's own address (app.huesy.app): its front door is the app itself,
+// Today or sign in, not the waitlist site the other addresses open on.
+const APP_HOSTS = (process.env.HUESY_APP_HOSTS || "app.huesy.app")
+  .split(",")
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean);
+
 export async function middleware(request) {
+  const host = (request.headers.get("host") || "").toLowerCase().split(":")[0];
+  if (request.nextUrl.pathname === "/" && APP_HOSTS.includes(host)) {
+    const to = request.nextUrl.clone();
+    to.pathname = "/home";
+    return NextResponse.redirect(to);
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return NextResponse.next();

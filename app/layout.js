@@ -12,7 +12,7 @@ const newsreader = Newsreader({
   display: "swap",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://huesy.vercel.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.huesy.app";
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
