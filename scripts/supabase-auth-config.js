@@ -11,7 +11,7 @@
 // the two Google variables out to set the URLs alone.
 
 const REF = process.env.SUPABASE_PROJECT_ID || "jkbwjciulqzzteviqpoq";
-const SITE = process.env.HUESY_SITE_URL || "https://content-engine-two-pink.vercel.app";
+const SITE = process.env.HUESY_SITE_URL || "https://huesy.vercel.app";
 const TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
 
 if (!TOKEN) {
@@ -20,11 +20,15 @@ if (!TOKEN) {
 }
 
 // Every place a sign in, confirmation or recovery link may land. The wildcard
-// covers Vercel preview deployments on the Huesy project.
+// covers Vercel preview deployments of the huesy project only. The old address
+// (19 Oct 2026, before the move to this account) now redirects here; it stays
+// listed so links already sent still land.
 const REDIRECTS = [
   `${SITE}/auth/callback`,
   `${SITE}/**`,
-  "https://*-xyzs-projects-03235428.vercel.app/auth/callback",
+  "https://huesy-*-xyz7765007s-projects.vercel.app/auth/callback",
+  "https://content-engine-two-pink.vercel.app/auth/callback",
+  "https://content-engine-two-pink.vercel.app/**",
   "http://localhost:3000/auth/callback",
   "http://localhost:4311/auth/callback",
 ];
